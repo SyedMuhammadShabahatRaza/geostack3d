@@ -1,0 +1,131 @@
+# ============================================================
+# pyproject.toml
+# ============================================================
+# This file tells Python:
+#   - What your package is called
+#   - What other libraries it needs to work
+#   - How to install it
+#
+# Once this file exists, you can install your package by
+# running this command in the terminal:
+#
+#   pip install -e .
+#
+# The "-e" means "editable" — changes you make to the code
+# take effect immediately without reinstalling.
+# ============================================================
+
+[build-system]
+# These two lines tell pip HOW to build your package.
+# You don't need to change these — just leave them as-is.
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+# The name people will use when they install your package:
+#   pip install gis-harmonizer
+name = "geostack3d"
+
+# Your package version. Update this when you make big changes.
+# Convention: major.minor.patch  (e.g. 0.2.0 after adding a new feature)
+version = "0.1.0"
+
+# A one-line description shown on PyPI
+description = "A practical GIS data harmonization and visualization pipeline"
+
+# Points to your README file for longer documentation
+readme = "README.md"
+
+# Minimum Python version required
+requires-python = ">=3.10"
+
+# Your name and email (update these)
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+
+# Keywords help people find your package on PyPI
+keywords = ["gis", "geospatial", "geology", "harmonization", "pipeline"]
+
+# ── Required libraries ──────────────────────────────────────
+# These are installed automatically when someone does pip install gis-harmonizer
+# Think of these as the "tools in your toolbox" your code needs
+dependencies = [
+    # --- Reading and working with vector GIS data (shapefiles, geojson etc.) ---
+    "geopandas>=0.14",      # the main GIS library — like pandas but for maps
+
+    # --- Reading raster data (GeoTIFF, NetCDF) ---
+    "rasterio>=1.3",        # opens and reads raster files
+
+    # --- Coordinate reference systems and reprojection ---
+    "pyproj>=3.6",          # converts between coordinate systems (CRS)
+
+    # --- Geometry operations (fixing shapes, checking validity) ---
+    "shapely>=2.0",         # works with geometric shapes (polygons, lines, points)
+
+    # --- Reading raster data as arrays with coordinate awareness ---
+    "rioxarray>=0.15",      # adds CRS-awareness to xarray (used for NetCDF)
+    "xarray>=2023.1",       # multi-dimensional arrays (used for raster grids)
+
+    # --- Raster + vector statistics (e.g. mean elevation per polygon) ---
+    "rasterstats>=0.19",
+
+    # --- Reading CSV and Excel files ---
+    "pandas>=2.0",          # tabular data — you likely already know this one
+    "openpyxl>=3.1",        # lets pandas read .xlsx Excel files
+
+    # --- Saving to fast GeoParquet format ---
+    "pyarrow>=14.0",        # fast file format for large datasets
+
+    # --- Reading config YAML files ---
+    "pyyaml>=6.0",          # reads .yaml config files into Python dicts
+
+    # --- Validating config values ---
+    "pydantic>=2.0",        # checks your config values are correct types
+
+    # --- Making interactive maps ---
+    "folium>=0.15",         # creates interactive Leaflet.js maps as HTML files
+
+    # --- Making static maps ---
+    "matplotlib>=3.7",      # the classic Python plotting library
+
+    # --- Adding basemaps to static maps ---
+    "contextily>=1.4",      # adds OpenStreetMap/CartoDB basemap tiles
+
+    # --- Progress bars in the terminal ---
+    "tqdm>=4.66",           # shows a progress bar: [=====>  ] 60%
+
+    # --- Better logging messages ---
+    "loguru>=0.7",          # prettier, more informative log messages
+]
+
+# ── Optional extras ─────────────────────────────────────────
+# Install these with:  pip install geostack3d[dev]
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",          # the testing framework
+    "pytest-cov>=4.1",      # shows which lines of code are covered by tests
+]
+
+
+# ── How to find the package files ───────────────────────────
+[tool.setuptools.packages.find]
+# Look for packages starting from the current directory
+where = ["."]
+# Only include the geostack3d package (not tests)
+include = ["geostack3d"]
+
+# Include non-Python files (like the default YAML config)
+[tool.setuptools.package-data]
+geostack3d = ["configs/*.yaml"]
+
+
+# ── Test configuration ───────────────────────────────────────
+[tool.pytest.ini_options]
+# Where to look for test files
+testpaths = ["tests"]
+# Extra options:
+#   --cov=geostack3d  → measure which lines are tested
+#   -v                    → verbose output (show each test name)
+addopts = "--cov=geostack3d --cov-report=term-missing -v"
