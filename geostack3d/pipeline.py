@@ -5,8 +5,8 @@
 #   Orchestrates the pipeline stages built so far:
 #     1. Validate   check all files before loading anything
 #     2. Ingest     load all data sources
-#     3. Clip       clip all layers to study area
-#     4. CRS        reproject everything to WGS84 (EPSG:4326)
+#     3. CRS        reproject everything to WGS84 (EPSG:4326)
+#     4. Clip       clip all layers to study area
 #
 # More stages (schema, geometry, QA, visualization) to follow.
 # ============================================================
@@ -94,18 +94,22 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     all_vectors, all_rasters, tabulars = load_all_sources(config)
     all_vectors.update(tabulars)
 
-    # Stage 3: Clip to study area
-    logger.info("Stage 3: Clipping to study area...")
+    # Stage 3: CRS harmonization
+    # Must happen BEFORE clipping — the study area and data layers
+    # can be in different CRS, so clipping first was comparing
+    # geometries in mismatched coordinate systems and silently
+    # producing empty or wrong results.
+    logger.info("Stage 3: CRS harmonization...")
+    all_vectors = harmonize_crs(all_vectors, config.crs)
+    if all_rasters:
+        all_rasters = harmonize_raster_crs(all_rasters, config.crs)
+
+    # Stage 4: Clip to study area
+    logger.info("Stage 4: Clipping to study area...")
     spatial = SpatialHarmonizer(config.spatial)
     all_vectors = spatial.clip_vectors(all_vectors)
     if all_rasters:
         all_rasters = spatial.clip_rasters(all_rasters)
-
-    # Stage 4: CRS harmonization
-    logger.info("Stage 4: CRS harmonization...")
-    all_vectors = harmonize_crs(all_vectors, config.crs)
-    if all_rasters:
-        all_rasters = harmonize_raster_crs(all_rasters, config.crs)
 
     logger.info("PIPELINE COMPLETE")
 
