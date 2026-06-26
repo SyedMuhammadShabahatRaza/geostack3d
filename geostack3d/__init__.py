@@ -3,62 +3,16 @@ geostack3d
 ==========
 A Python package for 3D geological terrain visualization.
 
-Combines DEM (elevation), orthophoto (satellite imagery),
-vector GIS layers, and geochemical sample data into an
-interactive 3D scene — directly from a Jupyter notebook.
-
-Install
--------
-pip install git+https://github.com/SyedMuhammadShabahatRaza/geostack3d.git
-
-Quick Start
------------
->>> from geostack3d import run_pipeline
->>> result = run_pipeline(
-...     dem        = r"path/to/dem.tif",
-...     orthophoto = r"path/to/satellite.tif",
-...     samples    = r"path/to/samples.csv",
-...     study_area = r"path/to/boundary.geojson",
-...     output_dir = r"path/to/output",
-... )
->>>
->>> from geostack3d.visualize_pyvista import make_3d_scene_pyvista
->>> plotter = make_3d_scene_pyvista(
-...     result["vectors"],
-...     result["rasters"],
-...     dem_name="dem",
-... )
->>> plotter.show()
-
-Author
-------
-Syed M. S. Raza
-RWTH Aachen University — Sustainable Computational Engineering
+Work in progress — module implementations to follow.
 """
 
 __version__ = "0.1.0"
 __author__ = "Syed M. S. Raza"
-__email__ = "shabahatnaqvi786@gmail.com"
+__email__ = "syed.muhammad.shabahat.raza@rwth-aachen.de"
 
 
 def run_pipeline(config_path=None, **kwargs):
-    """
-    Run the full GeoStack3D pipeline.
-
-    Pass file paths directly:
-        result = run_pipeline(
-            dem        = r"path/to/dem.tif",
-            orthophoto = r"path/to/satellite.tif",
-            samples    = r"path/to/samples.csv",
-            study_area = r"path/to/boundary.geojson",
-            output_dir = r"path/to/output",
-        )
-
-    Or pass a YAML config file:
-        result = run_pipeline("configs/default.yaml")
-
-    See geostack3d.pipeline.run_pipeline for full documentation.
-    """
+    """Run the GeoStack3D pipeline."""
     from geostack3d.pipeline import run_pipeline as _run
     return _run(config_path=config_path, **kwargs)
 
@@ -69,29 +23,4 @@ def load_config(path):
     return _load(path)
 
 
-def make_3d_scene(vectors, rasters, **kwargs):
-    """
-    Build a 3D terrain scene with PyVista.
-
-    Convenience wrapper — equivalent to:
-        from geostack3d.visualize_pyvista import make_3d_scene_pyvista
-        plotter = make_3d_scene_pyvista(vectors, rasters, ...)
-        plotter.show()
-    """
-    try:
-        from geostack3d.visualize_pyvista import make_3d_scene_pyvista
-        return make_3d_scene_pyvista(vectors, rasters, **kwargs)
-    except ImportError:
-        raise ImportError(
-            "PyVista is required for 3D visualization.\n"
-            "Install it with:  pip install pyvista[jupyter]"
-        )
-
-
-__all__ = [
-    "run_pipeline",
-    "load_config",
-    "make_3d_scene",
-    "__version__",
-    "__author__",
-]
+__all__ = ["run_pipeline", "load_config", "__version__", "__author__"]
