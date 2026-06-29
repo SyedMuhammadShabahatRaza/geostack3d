@@ -7,8 +7,9 @@
 #     2. Ingest     load all data sources
 #     3. CRS        reproject everything to WGS84 (EPSG:4326)
 #     4. Clip       clip all layers to study area
+#     5. Schema     standardize field names and data types
 #
-# More stages (schema, geometry, QA, visualization) to follow.
+# More stages (geometry, QA, visualization) to follow.
 # ============================================================
 
 from pathlib import Path
@@ -22,12 +23,14 @@ from geostack3d.config import (
     TabularSourceConfig,
     CRSConfig,
     SpatialConfig,
+    SchemaConfig,
     load_config,
 )
 from geostack3d.validate import validate_all_sources
 from geostack3d.ingest import load_all_sources
 from geostack3d.spatial import SpatialHarmonizer
 from geostack3d.crs import harmonize_crs, harmonize_raster_crs
+from geostack3d.schema import harmonize_schema
 
 
 def _build_config_from_args(
@@ -76,6 +79,7 @@ def _build_config_from_args(
         raster_sources=raster_sources,
         tabular_sources=tabular_sources,
         crs=CRSConfig(project_epsg=project_crs),
+        schema_config=SchemaConfig(),
         spatial=SpatialConfig(
             study_area_path=str(study_area) if study_area else None,
             clip_to_study_area=study_area is not None,
@@ -84,7 +88,7 @@ def _build_config_from_args(
 
 
 def _run_pipeline_from_config(config: PipelineConfig) -> dict:
-    """Run validate -> ingest -> clip -> CRS harmonization."""
+    """Run validate -> ingest -> CRS -> clip -> schema."""
     logger.info("GEOSTACK3D PIPELINE — starting")
 
     # Stage 1: Validate
@@ -110,6 +114,11 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     all_vectors = spatial.clip_vectors(all_vectors)
     if all_rasters:
         all_rasters = spatial.clip_rasters(all_rasters)
+
+    # Stage 5: Schema harmonization
+    logger.info("Stage 5: Harmonizing field names and types...")
+    all_source_configs = list(config.vector_sources) + list(config.tabular_sources)
+    all_vectors = harmonize_schema(all_vectors, config.schema_config, all_source_configs)
 
     logger.info("PIPELINE COMPLETE")
 
