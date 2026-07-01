@@ -3,13 +3,14 @@
 # ============================================================
 # PURPOSE:
 #   Orchestrates the pipeline stages built so far:
-#     1. Validate   check all files before loading anything
-#     2. Ingest     load all data sources
-#     3. CRS        reproject everything to WGS84 (EPSG:4326)
-#     4. Clip       clip all layers to study area
-#     5. Schema     standardize field names and data types
+#     1. Validate     check all files before loading anything
+#     2. Ingest       load all data sources
+#     3. CRS          reproject everything to WGS84 (EPSG:4326)
+#     4. Clip         clip all layers to study area
+#     5. Schema       standardize field names and data types
+#     6. Geometry     detect and repair invalid geometries
 #
-# More stages (geometry, QA, visualization) to follow.
+# More stages (QA, visualization) to follow.
 # ============================================================
 
 from pathlib import Path
@@ -24,6 +25,7 @@ from geostack3d.config import (
     CRSConfig,
     SpatialConfig,
     SchemaConfig,
+    GeometryConfig,
     load_config,
 )
 from geostack3d.validate import validate_all_sources
@@ -31,6 +33,7 @@ from geostack3d.ingest import load_all_sources
 from geostack3d.spatial import SpatialHarmonizer
 from geostack3d.crs import harmonize_crs, harmonize_raster_crs
 from geostack3d.schema import harmonize_schema
+from geostack3d.geometry import repair_geometries
 
 
 def _build_config_from_args(
@@ -80,6 +83,7 @@ def _build_config_from_args(
         tabular_sources=tabular_sources,
         crs=CRSConfig(project_epsg=project_crs),
         schema_config=SchemaConfig(),
+        geometry=GeometryConfig(auto_repair=True),
         spatial=SpatialConfig(
             study_area_path=str(study_area) if study_area else None,
             clip_to_study_area=study_area is not None,
@@ -88,7 +92,7 @@ def _build_config_from_args(
 
 
 def _run_pipeline_from_config(config: PipelineConfig) -> dict:
-    """Run validate -> ingest -> CRS -> clip -> schema."""
+    """Run validate -> ingest -> CRS -> clip -> schema -> geometry."""
     logger.info("GEOSTACK3D PIPELINE — starting")
 
     # Stage 1: Validate
@@ -119,6 +123,10 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     logger.info("Stage 5: Harmonizing field names and types...")
     all_source_configs = list(config.vector_sources) + list(config.tabular_sources)
     all_vectors = harmonize_schema(all_vectors, config.schema_config, all_source_configs)
+
+    # Stage 6: Geometry repair
+    logger.info("Stage 6: Validating and repairing geometries...")
+    all_vectors = repair_geometries(all_vectors, config.geometry)
 
     logger.info("PIPELINE COMPLETE")
 
