@@ -9,8 +9,9 @@
 #     4. Clip         clip all layers to study area
 #     5. Schema       standardize field names and data types
 #     6. Geometry     detect and repair invalid geometries
+#     7. QA           run data quality checks
 #
-# More stages (QA, visualization) to follow.
+# More stages (visualization) to follow.
 # ============================================================
 
 from pathlib import Path
@@ -26,6 +27,7 @@ from geostack3d.config import (
     SpatialConfig,
     SchemaConfig,
     GeometryConfig,
+    QAConfig,
     load_config,
 )
 from geostack3d.validate import validate_all_sources
@@ -34,6 +36,7 @@ from geostack3d.spatial import SpatialHarmonizer
 from geostack3d.crs import harmonize_crs, harmonize_raster_crs
 from geostack3d.schema import harmonize_schema
 from geostack3d.geometry import repair_geometries
+from geostack3d.qa import run_qa
 
 
 def _build_config_from_args(
@@ -84,6 +87,7 @@ def _build_config_from_args(
         crs=CRSConfig(project_epsg=project_crs),
         schema_config=SchemaConfig(),
         geometry=GeometryConfig(auto_repair=True),
+        qa=QAConfig(halt_on_failure=False),
         spatial=SpatialConfig(
             study_area_path=str(study_area) if study_area else None,
             clip_to_study_area=study_area is not None,
@@ -92,7 +96,7 @@ def _build_config_from_args(
 
 
 def _run_pipeline_from_config(config: PipelineConfig) -> dict:
-    """Run validate -> ingest -> CRS -> clip -> schema -> geometry."""
+    """Run validate -> ingest -> CRS -> clip -> schema -> geometry -> QA."""
     logger.info("GEOSTACK3D PIPELINE — starting")
 
     # Stage 1: Validate
@@ -128,11 +132,16 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     logger.info("Stage 6: Validating and repairing geometries...")
     all_vectors = repair_geometries(all_vectors, config.geometry)
 
+    # Stage 7: QA checks
+    logger.info("Stage 7: Running QA checks...")
+    qa_results = run_qa(all_vectors, config.qa, config.crs.project_epsg)
+
     logger.info("PIPELINE COMPLETE")
 
     return {
         "vectors": all_vectors,
         "rasters": all_rasters,
+        "qa": qa_results,
         "config": config,
     }
 
