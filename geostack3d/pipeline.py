@@ -10,8 +10,11 @@
 #     5. Schema       standardize field names and data types
 #     6. Geometry     detect and repair invalid geometries
 #     7. QA           run data quality checks
+#     8. Save         export processed files
 #
-# More stages (visualization) to follow.
+#   3D visualization (visualize_pyvista.py) is kept OUTSIDE
+#   this pipeline on purpose, so run_pipeline() works even
+#   without PyVista installed.
 # ============================================================
 
 from pathlib import Path
@@ -28,6 +31,7 @@ from geostack3d.config import (
     SchemaConfig,
     GeometryConfig,
     QAConfig,
+    OutputConfig,
     load_config,
 )
 from geostack3d.validate import validate_all_sources
@@ -39,6 +43,28 @@ from geostack3d.geometry import repair_geometries
 from geostack3d.qa import run_qa
 
 
+def _save_vectors(vectors: dict, output_dir: str, vector_format: str) -> list[str]:
+    """Save processed vector layers to disk."""
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    saved = []
+
+    for name, gdf in vectors.items():
+        if vector_format == "gpkg":
+            path = out / f"{name}.gpkg"
+            gdf.to_file(str(path), driver="GPKG")
+        elif vector_format == "geojson":
+            path = out / f"{name}.geojson"
+            gdf.to_file(str(path), driver="GeoJSON")
+        else:
+            raise ValueError(f"Unsupported vector format: '{vector_format}'")
+
+        logger.info(f"  Saved vector '{name}' → {path}")
+        saved.append(str(path.resolve()))
+
+    return saved
+
+
 def _build_config_from_args(
     dem: str | None,
     orthophoto: str | None,
@@ -48,6 +74,8 @@ def _build_config_from_args(
     lon_col: str,
     lat_col: str,
     project_crs: int,
+    output_dir: str,
+    vector_format: str,
 ) -> PipelineConfig:
     """Build a PipelineConfig from simple function arguments."""
     vector_sources = []
@@ -88,6 +116,7 @@ def _build_config_from_args(
         schema_config=SchemaConfig(),
         geometry=GeometryConfig(auto_repair=True),
         qa=QAConfig(halt_on_failure=False),
+        output=OutputConfig(directory=output_dir, vector_format=vector_format),
         spatial=SpatialConfig(
             study_area_path=str(study_area) if study_area else None,
             clip_to_study_area=study_area is not None,
@@ -96,7 +125,7 @@ def _build_config_from_args(
 
 
 def _run_pipeline_from_config(config: PipelineConfig) -> dict:
-    """Run validate -> ingest -> CRS -> clip -> schema -> geometry -> QA."""
+    """Run validate -> ingest -> CRS -> clip -> schema -> geometry -> QA -> save."""
     logger.info("GEOSTACK3D PIPELINE — starting")
 
     # Stage 1: Validate
@@ -136,12 +165,25 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     logger.info("Stage 7: Running QA checks...")
     qa_results = run_qa(all_vectors, config.qa, config.crs.project_epsg)
 
+    # Stage 8: Save outputs
+    logger.info("Stage 8: Saving outputs...")
+    saved = []
+    if all_vectors:
+        saved = _save_vectors(all_vectors, config.output.directory, config.output.vector_format)
+
     logger.info("PIPELINE COMPLETE")
+    logger.info(
+        "To view 3D model run:\n"
+        "  from geostack3d.visualize_pyvista import make_3d_scene_pyvista\n"
+        "  plotter = make_3d_scene_pyvista(result['vectors'], result['rasters'])\n"
+        "  plotter.show()"
+    )
 
     return {
         "vectors": all_vectors,
         "rasters": all_rasters,
         "qa": qa_results,
+        "saved": saved,
         "config": config,
     }
 
@@ -156,9 +198,11 @@ def run_pipeline(
     lon_col: str = "longitude",
     lat_col: str = "latitude",
     project_crs: int = 4326,
+    output_dir: str = "output",
+    vector_format: str = "gpkg",
 ) -> dict:
     """
-    Run the GeoStack3D pipeline (early version).
+    Run the GeoStack3D pipeline.
 
     Supports either a YAML config file or direct file path arguments.
     """
@@ -174,6 +218,8 @@ def run_pipeline(
             lon_col=lon_col,
             lat_col=lat_col,
             project_crs=project_crs,
+            output_dir=output_dir,
+            vector_format=vector_format,
         )
 
     return _run_pipeline_from_config(config)
