@@ -15,12 +15,19 @@ Quick Start
 -----------
 >>> from geostack3d import run_pipeline
 >>> result = run_pipeline(
-...     dem     = r"path/to/dem.tif",
-...     samples = r"path/to/samples.csv",
+...     dem        = r"path/to/dem.tif",
+...     orthophoto = r"path/to/satellite.tif",
+...     samples    = r"path/to/samples.csv",
+...     study_area = r"path/to/boundary.geojson",
+...     output_dir = r"path/to/output",
 ... )
 >>>
 >>> from geostack3d.visualize_pyvista import make_3d_scene_pyvista
->>> plotter = make_3d_scene_pyvista(result["vectors"], result["rasters"])
+>>> plotter = make_3d_scene_pyvista(
+...     result["vectors"],
+...     result["rasters"],
+...     dem_name="dem",
+... )
 >>> plotter.show()
 
 Author
@@ -35,7 +42,23 @@ __email__ = "shabahatnaqvi786@gmail.com"
 
 
 def run_pipeline(config_path=None, **kwargs):
-    """Run the GeoStack3D pipeline."""
+    """
+    Run the full GeoStack3D pipeline.
+
+    Pass file paths directly:
+        result = run_pipeline(
+            dem        = r"path/to/dem.tif",
+            orthophoto = r"path/to/satellite.tif",
+            samples    = r"path/to/samples.csv",
+            study_area = r"path/to/boundary.geojson",
+            output_dir = r"path/to/output",
+        )
+
+    Or pass a YAML config file:
+        result = run_pipeline("configs/default.yaml")
+
+    See geostack3d.pipeline.run_pipeline for full documentation.
+    """
     from geostack3d.pipeline import run_pipeline as _run
     return _run(config_path=config_path, **kwargs)
 
