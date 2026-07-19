@@ -23,7 +23,7 @@
 
 
 name: rwth_geology_project
-description: "Hindu Kush study area — Cu geochemistry and DEM analysis"
+description: "Hindu Kush study area â€” Cu geochemistry and DEM analysis"
 
 # -- DATA DIRECTORY (change only this if you move your folder) --
 # All paths below use this as their base.
@@ -95,7 +95,7 @@ tabular_sources:
 
 
 # ------------------------------------------------------------
-# CRS — reproject everything to this
+# CRS â€” reproject everything to this
 # 4326  = WGS84 (degrees, global)
 # 32642 = UTM Zone 42N (metres, your study area)
 # ------------------------------------------------------------
@@ -113,7 +113,7 @@ geometry:
 
 
 # ------------------------------------------------------------
-# SCHEMA — canonical field names and types
+# SCHEMA â€” canonical field names and types
 # Add/remove fields as your data grows
 # ------------------------------------------------------------
 schema_config:
