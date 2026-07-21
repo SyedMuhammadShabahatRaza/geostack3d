@@ -409,7 +409,8 @@ def make_3d_scene_pyvista(
                 outline_mesh = pv.lines_from_points(points)
                 plotter.add_mesh(outline_mesh, color="blue", line_width=3, label=name)
 
-    plotter.add_legend()
+    if vectors:
+        plotter.add_legend()
     plotter.add_axes()
     plotter.camera.zoom(1.2)
 
