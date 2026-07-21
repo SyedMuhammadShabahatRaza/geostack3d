@@ -19,7 +19,6 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
-
 [project]
 # The name people will use when they install your package
 name = "geostack3d"
@@ -64,9 +63,6 @@ dependencies = [
     # --- Saving to fast GeoParquet format ---
     "pyarrow>=14.0",        # fast file format for large datasets
 
-    # --- Reading config YAML files ---
-    "pyyaml>=6.0",          # reads .yaml config files into Python dicts
-
     # --- Validating config values ---
     "pydantic>=2.0",        # checks your config values are correct types
 
@@ -85,16 +81,10 @@ dev = [
     "pytest-cov>=4.1",      # shows which lines of code are covered by tests
 ]
 
-
 # ── How to find the package files ───────────────────────────
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["geostack3d"]
-
-# Include non-Python files (like the default YAML config)
-[tool.setuptools.package-data]
-geostack3d = ["configs/*.yaml"]
-
 
 # ── Test configuration ───────────────────────────────────────
 [tool.pytest.ini_options]

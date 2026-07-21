@@ -6,8 +6,7 @@
 #   This is the only file most users ever need to interact
 #   with directly.
 #
-# TWO INTERFACES:
-#   1. Simple (recommended for end users):
+# USAGE:
 #      result = run_pipeline(
 #          dem        = r"path/to/dem.tif",
 #          orthophoto = r"path/to/satellite.tif",
@@ -15,9 +14,6 @@
 #          study_area = r"path/to/boundary.geojson",
 #          output_dir = r"path/to/output",
 #      )
-#
-#   2. Config file (for complex or repeated projects):
-#      result = run_pipeline("configs/default.yaml")
 #
 # PIPELINE SEQUENCE:
 #   1. Validate     check all files before loading anything
@@ -59,7 +55,6 @@ from geostack3d.config import (
     QAConfig,
     OutputConfig,
     VisualizationConfig,
-    load_config,
 )
 from geostack3d.validate import validate_all_sources
 from geostack3d.ingest import load_all_sources
@@ -114,7 +109,6 @@ def _save_rasters(
     saved = []
 
     for name, ds in rasters.items():
-        # Handle both MemoryFile and open DatasetReader
         if isinstance(ds, rasterio.io.MemoryFile):
             src = ds.open()
         else:
@@ -150,12 +144,7 @@ def _build_config_from_args(
     dem_name: str,
     orthophoto_name: str | None,
 ) -> PipelineConfig:
-    """
-    Build a PipelineConfig from simple function arguments.
-
-    This allows run_pipeline() to be called with file paths
-    directly instead of requiring a YAML config file.
-    """
+    """Build a PipelineConfig from function arguments."""
     vector_sources = []
     if vectors:
         for name, path in vectors.items():
@@ -226,9 +215,6 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     """
     Run all pipeline stages using a PipelineConfig object.
 
-    This is the internal core used by both run_pipeline()
-    interfaces (argument-based and YAML-based).
-
     Parameters
     ----------
     config : PipelineConfig
@@ -251,7 +237,6 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     all_vectors.update(tabulars)  # tabular → point GeoDataFrames
 
     # ── Stage 3: CRS harmonization ───────────────────────────
-    # Reproject ALL layers to the project CRS (default WGS84).
     # Must happen BEFORE clipping — the study area and data
     # layers can be in different CRS, so clipping first was
     # comparing geometries in mismatched coordinate systems
@@ -316,7 +301,6 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
             _save_rasters(all_rasters, config.output.directory)
         )
 
-    # ── Done ──────────────────────────────────────────────────
     elapsed = time.perf_counter() - start
     logger.info("=" * 60)
     logger.info(f"PIPELINE COMPLETE in {elapsed:.2f}s")
@@ -344,7 +328,6 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
 # ── Public interface ─────────────────────────────────────────
 
 def run_pipeline(
-    config_path: str | Path | None = None,
     dem: str | None = None,
     orthophoto: str | None = None,
     samples: str | None = None,
@@ -362,25 +345,19 @@ def run_pipeline(
     """
     Run the full GeoStack3D pipeline.
 
-    Supports two calling styles:
-
-    1. Simple (pass file paths directly):
-       result = run_pipeline(
-           dem        = r"path/to/dem.tif",
-           orthophoto = r"path/to/satellite.tif",
-           samples    = r"path/to/samples.csv",
-           study_area = r"path/to/boundary.geojson",
-           output_dir = r"path/to/output",
-       )
-
-    2. Config file (for complex projects):
-       result = run_pipeline("configs/default.yaml")
+    result = run_pipeline(
+        dem        = r"path/to/dem.tif",
+        orthophoto = r"path/to/satellite.tif",
+        samples    = r"path/to/samples.csv",
+        study_area = r"path/to/boundary.geojson",
+        output_dir = r"path/to/output",
+    )
 
     Pipeline stages:
         1. Validate   check files before loading
         2. Ingest     load all data sources
         3. CRS        reproject everything to WGS84
-        4. Clip       clip to study area (if provided)
+        4. Clip       clip to study area (required)
         5. Schema     standardize field names
         6. Geometry   repair invalid geometries
         7. QA         data quality checks
@@ -388,10 +365,6 @@ def run_pipeline(
 
     Parameters
     ----------
-    config_path : str or Path, optional
-        Path to a YAML config file. If provided, all other
-        arguments are ignored.
-
     dem : str, optional
         Path to DEM/elevation raster (.tif).
         Required for 3D visualization.
@@ -407,10 +380,12 @@ def run_pipeline(
         Additional vector layers as {name: path}.
         Example: {"faults": r"path/to/faults.geojson"}
 
-    study_area : str, optional
-        Path to a polygon file defining the area of interest.
-        All layers are clipped to this boundary.
-        Accepts any CRS — reprojected automatically.
+    study_area : str
+        REQUIRED. Path to a polygon file defining the area of
+        interest. All layers are clipped to this boundary.
+        Accepts any CRS — reprojected automatically. Without
+        this, a full raster tile would be processed at full
+        extent, which is slow and memory-intensive.
 
     lon_col : str
         Longitude column name in CSV. Default: "longitude"
@@ -451,8 +426,6 @@ def run_pipeline(
 
     Examples
     --------
-    Simple usage:
-
     >>> from geostack3d import run_pipeline
     >>> result = run_pipeline(
     ...     dem        = r"C:/data/dem.tif",
@@ -470,29 +443,22 @@ def run_pipeline(
     ...     dem_name="dem",
     ... )
     >>> plotter.show()
-
-    Config file usage:
-
-    >>> result = run_pipeline("configs/default.yaml")
     """
 
-    if config_path is not None:
-        config = load_config(config_path)
-    else:
-        config = _build_config_from_args(
-            dem=dem,
-            orthophoto=orthophoto,
-            samples=samples,
-            vectors=vectors,
-            study_area=study_area,
-            lon_col=lon_col,
-            lat_col=lat_col,
-            project_crs=project_crs,
-            output_dir=output_dir,
-            vector_format=vector_format,
-            z_exaggeration=z_exaggeration,
-            dem_name=dem_name,
-            orthophoto_name=orthophoto_name,
-        )
+    config = _build_config_from_args(
+        dem=dem,
+        orthophoto=orthophoto,
+        samples=samples,
+        vectors=vectors,
+        study_area=study_area,
+        lon_col=lon_col,
+        lat_col=lat_col,
+        project_crs=project_crs,
+        output_dir=output_dir,
+        vector_format=vector_format,
+        z_exaggeration=z_exaggeration,
+        dem_name=dem_name,
+        orthophoto_name=orthophoto_name,
+    )
 
     return _run_pipeline_from_config(config)

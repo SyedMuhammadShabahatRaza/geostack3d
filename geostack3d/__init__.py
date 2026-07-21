@@ -41,7 +41,7 @@ __author__ = "Syed M. S. Raza"
 __email__ = "shabahatnaqvi786@gmail.com"
 
 
-def run_pipeline(config_path=None, **kwargs):
+def run_pipeline(**kwargs):
     """
     Run the full GeoStack3D pipeline.
 
@@ -54,19 +54,10 @@ def run_pipeline(config_path=None, **kwargs):
             output_dir = r"path/to/output",
         )
 
-    Or pass a YAML config file:
-        result = run_pipeline("configs/default.yaml")
-
     See geostack3d.pipeline.run_pipeline for full documentation.
     """
     from geostack3d.pipeline import run_pipeline as _run
-    return _run(config_path=config_path, **kwargs)
-
-
-def load_config(path):
-    """Load and validate a YAML config file."""
-    from geostack3d.config import load_config as _load
-    return _load(path)
+    return _run(**kwargs)
 
 
 def make_3d_scene(vectors, rasters, **kwargs):
@@ -90,7 +81,6 @@ def make_3d_scene(vectors, rasters, **kwargs):
 
 __all__ = [
     "run_pipeline",
-    "load_config",
     "make_3d_scene",
     "__version__",
     "__author__",

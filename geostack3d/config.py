@@ -3,14 +3,13 @@
 # ============================================================
 from pathlib import Path
 from typing import Any, Literal
-import yaml
 from pydantic import BaseModel, Field, model_validator
 
 
 # ── Source configs ───────────────────────────────────────────
 
 class VectorSourceConfig(BaseModel):
-    """One entry under 'vector_sources:' in the YAML."""
+    """One entry for a vector source."""
     name: str
     path: str
     layer: str | None = None
@@ -20,7 +19,7 @@ class VectorSourceConfig(BaseModel):
 
 
 class RasterSourceConfig(BaseModel):
-    """One entry under 'raster_sources:' in the YAML."""
+    """One entry for a raster source."""
     name: str
     path: str
     band: int = 1
@@ -29,7 +28,7 @@ class RasterSourceConfig(BaseModel):
 
 
 class TabularSourceConfig(BaseModel):
-    """One entry under 'tabular_sources:' in the YAML."""
+    """One entry for a tabular (CSV/Excel) source."""
     name: str
     path: str
     lon_col: str = "longitude"
@@ -42,26 +41,26 @@ class TabularSourceConfig(BaseModel):
 # ── Stage configs ────────────────────────────────────────────
 
 class CRSConfig(BaseModel):
-    """Settings under 'crs:' in the YAML."""
+    """CRS harmonization settings."""
     project_epsg: int = 4326
 
 
 class GeometryConfig(BaseModel):
-    """Settings under 'geometry:' in the YAML."""
+    """Geometry repair settings."""
     auto_repair: bool = True
     drop_null_geometries: bool = True
     validity_threshold: float = 0.95
 
 
 class SchemaConfig(BaseModel):
-    """Settings under 'schema_config:' in the YAML."""
+    """Schema harmonization settings."""
     canonical_fields: dict[str, str] = Field(default_factory=dict)
     drop_extra_fields: bool = False
     encoding: str = "utf-8"
 
 
 class SpatialConfig(BaseModel):
-    """Settings under 'spatial:' in the YAML."""
+    """Study area clipping settings."""
     # REQUIRED — without it, the pipeline would process a full
     # DEM/raster tile at full extent, which can be slow and
     # memory-intensive on smaller machines. See PipelineConfig's
@@ -73,7 +72,7 @@ class SpatialConfig(BaseModel):
 
 
 class QAConfig(BaseModel):
-    """Settings under 'qa:' in the YAML."""
+    """QA gate settings."""
     min_row_count: int = 1
     max_row_count: int | None = None
     required_fields: list[str] = Field(default_factory=list)
@@ -81,14 +80,14 @@ class QAConfig(BaseModel):
 
 
 class OutputConfig(BaseModel):
-    """Settings under 'output:' in the YAML."""
+    """Output saving settings."""
     directory: str = "output"
     vector_format: Literal["gpkg", "geojson", "shp", "parquet"] = "gpkg"
     save_rasters: bool = True
 
 
 class VisualizationConfig(BaseModel):
-    """Settings under 'visualization:' in the YAML."""
+    """3D visualization settings."""
     engine: Literal["pyvista"] = "pyvista"
     dem_name: str = "dem"
     orthophoto_name: str | None = "orthophoto"
@@ -146,36 +145,7 @@ class PipelineConfig(BaseModel):
         if not self.spatial.study_area_path:
             raise ValueError(
                 "A study area is required.\n"
-                "Pass 'study_area' (simple interface) or set "
-                "'spatial.study_area_path' (YAML config) to a "
-                "boundary polygon file."
+                "Pass 'study_area' to run_pipeline() pointing to "
+                "a boundary polygon file."
             )
         return self
-
-
-# ── Public function ──────────────────────────────────────────
-
-def load_config(path: str | Path) -> PipelineConfig:
-    """
-    Read a YAML config file and return a validated PipelineConfig.
-
-    Examples
-    --------
-    >>> from geostack3d import load_config
-    >>> config = load_config("configs/default.yaml")
-    >>> print(config.crs.project_epsg)
-    4326
-    """
-    path = Path(path)
-
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Config file not found: {path}\n"
-            "Check the path and try again."
-        )
-
-    with open(path, encoding="utf-8") as f:
-        raw_dict = yaml.safe_load(f)
-
-    config = PipelineConfig.model_validate(raw_dict)
-    return config
