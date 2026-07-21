@@ -1,35 +1,13 @@
 # ============================================================
 # geostack3d/validate.py
 # ============================================================
-# PURPOSE:
-#   Check every input file BEFORE the pipeline starts loading
-#   data. This is a "fail fast" approach — catch problems
-#   immediately with clear messages rather than crashing
-#   mid-process with cryptic library errors.
-#
-# WHAT IT CHECKS:
-#   1. Does the file exist at the given path?
-#   2. Is the file non-empty (not 0 bytes)?
-#   3. Does the file extension match a supported format?
-#   4. For rasters: can rasterio actually open the file?
-#   5. For vectors: can geopandas actually read the file?
-#   6. For tabular: does the file have the expected lat/lon columns?
-#   7. Is the DEM present when 3D visualization is requested?
-#
-# WHY THIS MATTERS:
-#   A DEM file can exist on disk but be corrupted, truncated,
-#   or in an unsupported sub-format. Checking before loading
-#   means the user sees a clear error in 1 second instead of
-#   a confusing traceback after 30 seconds of processing.
-# ============================================================
-
 from pathlib import Path
 from loguru import logger
 
 
 # ── Supported formats ────────────────────────────────────────
 
-VECTOR_EXTENSIONS = {".geojson", ".json", ".shp", ".gpkg", ".kml", ".gml"}
+VECTOR_EXTENSIONS = {".geojson", ".json", ".shp", ".gpkg", ".kml", ".kmz", ".gml"}
 RASTER_EXTENSIONS = {".tif", ".tiff", ".geotiff", ".nc", ".img"}
 TABULAR_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
@@ -37,24 +15,7 @@ TABULAR_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 # ── Individual file checks ───────────────────────────────────
 
 def check_file_exists(path: str, source_name: str) -> None:
-    """
-    Check a file exists and is not empty.
-
-    Parameters
-    ----------
-    path : str
-        File path from the config.
-    source_name : str
-        Layer name — used in the error message so the user
-        knows exactly which config entry is wrong.
-
-    Raises
-    ------
-    FileNotFoundError
-        If the file does not exist.
-    ValueError
-        If the file exists but is empty (0 bytes).
-    """
+    """Check a file exists and is not empty."""
     p = Path(path)
 
     if not p.exists():
@@ -75,21 +36,7 @@ def check_file_exists(path: str, source_name: str) -> None:
 
 
 def check_extension(path: str, source_name: str, expected: set) -> None:
-    """
-    Check the file extension is a supported format.
-
-    Parameters
-    ----------
-    path : str
-    source_name : str
-    expected : set
-        Set of allowed extensions (e.g. {".tif", ".tiff"}).
-
-    Raises
-    ------
-    ValueError
-        If the extension is not in the supported set.
-    """
+    """Check the file extension is a supported format."""
     suffix = Path(path).suffix.lower()
 
     if suffix not in expected:
@@ -101,28 +48,7 @@ def check_extension(path: str, source_name: str, expected: set) -> None:
 
 
 def check_raster_readable(path: str, source_name: str) -> dict:
-    """
-    Try to open a raster file with rasterio and read its metadata.
-
-    This catches corrupted files, wrong formats, and missing
-    projection information — all without loading the actual
-    pixel data (which could be gigabytes).
-
-    Parameters
-    ----------
-    path : str
-    source_name : str
-
-    Returns
-    -------
-    dict
-        Basic metadata: width, height, band count, CRS, nodata.
-
-    Raises
-    ------
-    RuntimeError
-        If rasterio cannot open the file.
-    """
+    """Try to open a raster file with rasterio and read its metadata."""
     try:
         import rasterio
         with rasterio.open(path) as src:
@@ -148,29 +74,11 @@ def check_raster_readable(path: str, source_name: str) -> dict:
 
 
 def check_vector_readable(path: str, source_name: str) -> dict:
-    """
-    Try to open a vector file with geopandas and read its metadata.
-
-    Parameters
-    ----------
-    path : str
-    source_name : str
-
-    Returns
-    -------
-    dict
-        Basic metadata: feature count, geometry type, CRS, columns.
-
-    Raises
-    ------
-    RuntimeError
-        If geopandas cannot read the file.
-    """
+    """Try to open a vector file with geopandas and read its metadata."""
     try:
         import geopandas as gpd
         import fiona
 
-        # Enable KML driver if needed
         fiona.drvsupport.supported_drivers["KML"] = "rw"
         fiona.drvsupport.supported_drivers["LIBKML"] = "rw"
 
@@ -201,43 +109,17 @@ def check_tabular_readable(
     lon_col: str,
     lat_col: str,
 ) -> dict:
-    """
-    Try to read a CSV/Excel file and check coordinate columns exist.
-
-    Parameters
-    ----------
-    path : str
-    source_name : str
-    lon_col : str
-        Expected longitude column name.
-    lat_col : str
-        Expected latitude column name.
-
-    Returns
-    -------
-    dict
-        Basic metadata: row count, column names.
-
-    Raises
-    ------
-    RuntimeError
-        If the file cannot be read.
-    ValueError
-        If coordinate columns are missing.
-    """
+    """Try to read a CSV/Excel file and check coordinate columns exist."""
     try:
         import pandas as pd
         suffix = Path(path).suffix.lower()
         if suffix == ".csv":
-            df = pd.read_csv(path, nrows=5)  # only read first 5 rows for validation
+            df = pd.read_csv(path, nrows=5)
         else:
             df = pd.read_excel(path, nrows=5)
 
-        info = {
-            "columns": df.columns.tolist(),
-        }
+        info = {"columns": df.columns.tolist()}
 
-        # Check coordinate columns exist
         missing = []
         if lon_col not in df.columns:
             missing.append(f"longitude column '{lon_col}'")
@@ -276,16 +158,8 @@ def validate_all_sources(config) -> None:
     Optional sources (optional: true) that are missing are
     skipped with a warning instead of raising an error.
     Required sources (optional: false) that are missing stop
-    the pipeline immediately.
-
-    Parameters
-    ----------
-    config : PipelineConfig
-
-    Raises
-    ------
-    ValueError
-        If any required source file has a problem.
+    the pipeline immediately. The study area is always
+    required — see PipelineConfig.study_area_required.
     """
     logger.info("Pre-flight: Validating all source files...")
 
@@ -303,7 +177,7 @@ def validate_all_sources(config) -> None:
                     f"skipping (optional=true).\n"
                     f"  Path: {src.path}"
                 )
-                return False  # signal: skip this source
+                return False
             else:
                 errors.append(
                     f"[{src.name}] Required file not found: {src.path}"
@@ -316,43 +190,42 @@ def validate_all_sources(config) -> None:
                           else RASTER_EXTENSIONS if source_type == "raster"
                           else TABULAR_EXTENSIONS)
             check_fn(src.path, src.name)
-            return True  # signal: load this source
+            return True
         except Exception as e:
             errors.append(str(e))
             return False
 
-    # ── Validate vector sources ──────────────────────────────
     for src in config.vector_sources:
         _validate_source(src, check_vector_readable, "vector")
 
-    # ── Validate raster sources ──────────────────────────────
     for src in config.raster_sources:
         _validate_source(src, check_raster_readable, "raster")
 
-    # ── Validate tabular sources ─────────────────────────────
     for src in config.tabular_sources:
         def check_tabular(path, name):
             check_tabular_readable(path, name, src.lon_col, src.lat_col)
         _validate_source(src, check_tabular, "tabular")
 
-    # ── Validate study area (always optional) ────────────────
-    if config.spatial.study_area_path:
-        sa_path = Path(config.spatial.study_area_path)
-        if not sa_path.exists():
-            logger.warning(
-                f"  [validate] 'study_area': file not found — "
-                f"skipping clipping.\n"
-                f"  Path: {config.spatial.study_area_path}\n"
-                f"  Note: without a study area, the full extent\n"
-                f"  of each dataset will be processed."
-            )
-        else:
-            try:
-                check_file_exists(config.spatial.study_area_path, "study_area")
-                check_extension(config.spatial.study_area_path, "study_area", VECTOR_EXTENSIONS)
-                check_vector_readable(config.spatial.study_area_path, "study_area")
-            except Exception as e:
-                errors.append(str(e))
+    # ── Validate study area (REQUIRED, not optional) ─────────
+    # PipelineConfig.study_area_required already guarantees
+    # study_area_path is set by the time we get here — this
+    # check confirms the file it points to actually exists and
+    # is readable. Unlike other sources, a missing/broken study
+    # area is a hard error, not a warning: without it, the
+    # pipeline would fall back to processing a raster at full
+    # extent, which is slow and memory-intensive.
+    sa_path = Path(config.spatial.study_area_path)
+    if not sa_path.exists():
+        errors.append(
+            f"[study_area] Required file not found: {config.spatial.study_area_path}"
+        )
+    else:
+        try:
+            check_file_exists(config.spatial.study_area_path, "study_area")
+            check_extension(config.spatial.study_area_path, "study_area", VECTOR_EXTENSIONS)
+            check_vector_readable(config.spatial.study_area_path, "study_area")
+        except Exception as e:
+            errors.append(str(e))
 
     # ── Warn if DEM missing (3D won't work) ──────────────────
     raster_names = [src.name for src in config.raster_sources]
@@ -365,7 +238,6 @@ def validate_all_sources(config) -> None:
             f"Pipeline will continue but 3D scene cannot be generated."
         )
 
-    # ── Summary ──────────────────────────────────────────────
     if skipped:
         logger.info(f"  Skipped {len(skipped)} optional source(s): {skipped}")
 

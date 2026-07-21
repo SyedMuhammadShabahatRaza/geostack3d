@@ -9,7 +9,7 @@
 #   Your USGS DEM is a full 1-degree tile (3601x3601 pixels)
 #   covering a huge area. Your actual study area is tiny in
 #   comparison. Processing the full tile wastes memory and
-#   makes your 3D model hard to read. Clipping to a buffered
+#   makes your 3D model hard to read. Clipping to the exact
 #   study area boundary fixes both problems.
 #
 # GEOLOGY ANALOGY:
