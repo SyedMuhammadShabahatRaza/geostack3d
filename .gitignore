@@ -33,3 +33,7 @@ Thumbs.db
 # IDE files
 .vscode/
 .idea/
+
+# Test artifacts
+.coverage
+.pytest_cache/
