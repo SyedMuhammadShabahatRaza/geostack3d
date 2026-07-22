@@ -178,9 +178,3 @@ real USGS DEM tile (Hindu Kush region) and synthetic geochemistry sample
 points at real field coordinates. A `tests/` directory covering config
 validation, geometry repair, schema harmonization, QA, and full pipeline
 integration is in progress.
-
----
-
-## License
-
-MIT
