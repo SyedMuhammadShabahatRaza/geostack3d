@@ -55,6 +55,9 @@ dependencies = [
 
     # --- Geometry operations (fixing shapes, checking validity) ---
     "shapely>=2.0",         # works with geometric shapes (polygons, lines, points)
+    
+    # --- Deal with KML/KMZ format
+    "fiona>=1.9",           # enables KML/KMZ file reading (not always bundled with geopandas)
 
     # --- Reading CSV and Excel files ---
     "pandas>=2.0",          # tabular data — you likely already know this one
