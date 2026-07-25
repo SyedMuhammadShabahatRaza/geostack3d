@@ -21,7 +21,7 @@ class VectorSourceConfig(BaseModel):
 class RasterSourceConfig(BaseModel):
     """One entry for a raster source."""
     name: str
-    path: str
+    path: str | list[str]  # multiple paths = tiles to be merged into one
     band: int = 1
     nodata: float | None = None
     optional: bool = True

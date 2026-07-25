@@ -10,25 +10,23 @@
 #   Raster  : GeoTIFF, NetCDF, IMG
 #   Tabular : CSV, Excel (.xlsx, .xls)
 #
+# MULTI-TILE RASTERS:
+#   A raster source's path can be a single file OR a list of
+#   file paths. If a list is given, the tiles are automatically
+#   merged into one seamless raster before the rest of the
+#   pipeline sees it — useful when a study area spans more than
+#   one DEM/orthophoto tile (USGS tiles are typically only
+#   1x1 degree squares).
+#
 # OPTIONAL SOURCES:
 #   Each source has an 'optional' flag in the config.
 #   optional: true  → skip gracefully if file is missing
 #   optional: false → stop pipeline if file is missing
 #
-#   This means the user never needs to comment out sources
-#   in the config — just leave them in and if the file is
-#   not present and optional=true, it is silently skipped.
-#
 # WHAT IT RETURNS:
 #   vectors  → dict of GeoDataFrames (polygons, lines, points)
 #   rasters  → dict of open rasterio datasets
 #   tabulars → dict of GeoDataFrames (points from lat/lon)
-#
-# GEOLOGY ANALOGY:
-#   Like unpacking sample boxes from the field. Different
-#   containers (shapefiles, GeoTIFFs, CSVs) need different
-#   tools to open, but the goal is the same: get the data
-#   into a usable format for processing.
 # ============================================================
 
 from pathlib import Path
@@ -125,48 +123,107 @@ def _load_one_vector(src: VectorSourceConfig) -> gpd.GeoDataFrame | None:
 
 # ── Raster loading ───────────────────────────────────────────
 
-def _load_one_raster(src: RasterSourceConfig) -> rasterio.DatasetReader | None:
+def _merge_raster_tiles(paths: list, source_name: str):
     """
-    Open a single raster file.
+    Merge multiple raster tiles into one seamless raster.
+
+    Used when a study area spans more than one DEM/orthophoto
+    tile — a common situation since USGS tiles are typically
+    only 1x1 degree squares.
+
+    Parameters
+    ----------
+    paths : list of Path
+        Paths to the tiles to merge.
+    source_name : str
+        Just for logging.
+
+    Returns
+    -------
+    rasterio.MemoryFile
+        The merged raster, held in memory.
+    """
+    from rasterio.merge import merge as rio_merge
+
+    datasets = [rasterio.open(str(p)) for p in paths]
+    try:
+        merged_array, merged_transform = rio_merge(datasets)
+
+        profile = datasets[0].profile.copy()
+        profile.update(
+            height=merged_array.shape[1],
+            width=merged_array.shape[2],
+            transform=merged_transform,
+        )
+
+        memfile = rasterio.MemoryFile()
+        with memfile.open(**profile) as dst:
+            dst.write(merged_array)
+
+        logger.info(
+            f"  [ingest] '{source_name}': merged {len(paths)} tiles into "
+            f"one raster ({merged_array.shape[2]}×{merged_array.shape[1]} px)"
+        )
+        return memfile
+    finally:
+        for ds in datasets:
+            ds.close()
+
+
+def _load_one_raster(src: RasterSourceConfig):
+    """
+    Open a raster file — or, if multiple paths were given, merge
+    them into a single seamless raster first (e.g. when a study
+    area spans more than one DEM tile).
 
     Returns an open file handle — does NOT read all pixel data
-    into memory. This is intentional: rasters can be gigabytes.
-    Only the metadata is read here; pixel data is read on demand
-    by later pipeline stages.
+    into memory for single-tile sources. This is intentional:
+    rasters can be gigabytes. Only the metadata is read here;
+    pixel data is read on demand by later pipeline stages.
 
-    Returns None if the source is optional and file is missing.
+    Returns None if the source is optional and all tiles are missing.
     """
-    path = Path(src.path)
+    paths = src.path if isinstance(src.path, list) else [src.path]
+    path_objs = [Path(p) for p in paths]
 
-    if not path.exists():
+    missing = [p for p in path_objs if not p.exists()]
+    if missing:
         if src.optional:
             logger.warning(
-                f"  [ingest] '{src.name}': file not found — "
-                f"skipping (optional).\n"
-                f"  Path: {src.path}"
+                f"  [ingest] '{src.name}': {len(missing)} of {len(path_objs)} "
+                f"tile(s) not found — skipping (optional).\n"
+                f"  Missing: {[str(m) for m in missing]}"
             )
             return None
         raise FileNotFoundError(
-            f"\n[ingest] Required raster file not found: {src.path}\n"
-            f"Source name: '{src.name}'\n"
-            f"Check the path in your config."
+            f"\n[ingest] Required raster tile(s) not found for '{src.name}':\n"
+            + "\n".join(f"  - {m}" for m in missing) +
+            f"\nCheck the path(s) in your config."
         )
 
-    logger.info(f"  [ingest] Opening raster '{src.name}' from {path.name}")
+    if len(path_objs) == 1:
+        logger.info(f"  [ingest] Opening raster '{src.name}' from {path_objs[0].name}")
+        try:
+            dataset = rasterio.open(str(path_objs[0]))
+        except Exception as e:
+            raise RuntimeError(
+                f"\n[ingest] Could not open raster '{src.name}': {e}\n"
+                f"File: {path_objs[0]}"
+            ) from e
 
+        logger.info(
+            f"  [ingest] '{src.name}': {dataset.width}×{dataset.height} px, "
+            f"{dataset.count} band(s), CRS={dataset.crs}"
+        )
+        return dataset
+
+    logger.info(f"  [ingest] '{src.name}': {len(path_objs)} tiles provided, merging...")
     try:
-        dataset = rasterio.open(str(path))
+        return _merge_raster_tiles(path_objs, src.name)
     except Exception as e:
         raise RuntimeError(
-            f"\n[ingest] Could not open raster '{src.name}': {e}\n"
-            f"File: {src.path}"
+            f"\n[ingest] Could not merge raster tiles for '{src.name}': {e}"
         ) from e
-
-    logger.info(
-        f"  [ingest] '{src.name}': {dataset.width}×{dataset.height} px, "
-        f"{dataset.count} band(s), CRS={dataset.crs}"
-    )
-    return dataset
 
 
 # ── Tabular loading ──────────────────────────────────────────
@@ -264,7 +321,7 @@ def load_all_sources(config: PipelineConfig) -> tuple[dict, dict, dict]:
     -------
     tuple of three dicts:
         vectors  : name → GeoDataFrame
-        rasters  : name → open rasterio dataset
+        rasters  : name → open rasterio dataset (or merged MemoryFile)
         tabulars : name → GeoDataFrame (point geometries)
 
     Examples

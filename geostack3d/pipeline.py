@@ -15,9 +15,17 @@
 #          output_dir = r"path/to/output",
 #      )
 #
+#   dem / orthophoto can also be a LIST of paths, in which case
+#   the tiles are automatically merged into one seamless raster
+#   — useful when a study area spans more than one DEM tile:
+#      result = run_pipeline(
+#          dem        = [r"path/to/tile1.tif", r"path/to/tile2.tif"],
+#          study_area = r"path/to/boundary.geojson",
+#      )
+#
 # PIPELINE SEQUENCE:
 #   1. Validate     check all files before loading anything
-#   2. Ingest       load all data sources
+#   2. Ingest       load all data sources (merging DEM tiles if needed)
 #   3. CRS          reproject everything to WGS84 (EPSG:4326)
 #                   including study area (handles UTM input)
 #   4. Clip         clip all layers to study area
@@ -109,6 +117,7 @@ def _save_rasters(
     saved = []
 
     for name, ds in rasters.items():
+        # Handle both MemoryFile and open DatasetReader
         if isinstance(ds, rasterio.io.MemoryFile):
             src = ds.open()
         else:
@@ -130,8 +139,8 @@ def _save_rasters(
 
 
 def _build_config_from_args(
-    dem: str | None,
-    orthophoto: str | None,
+    dem,
+    orthophoto,
     samples: str | None,
     vectors: dict | None,
     study_area: str | None,
@@ -144,7 +153,15 @@ def _build_config_from_args(
     dem_name: str,
     orthophoto_name: str | None,
 ) -> PipelineConfig:
-    """Build a PipelineConfig from function arguments."""
+    """
+    Build a PipelineConfig from simple function arguments.
+
+    This allows run_pipeline() to be called with file paths
+    directly instead of requiring a YAML config file.
+
+    dem and orthophoto can each be a single path or a list of
+    paths (multiple tiles to be merged into one raster).
+    """
     vector_sources = []
     if vectors:
         for name, path in vectors.items():
@@ -154,13 +171,15 @@ def _build_config_from_args(
 
     raster_sources = []
     if dem:
+        dem_path = [str(p) for p in dem] if isinstance(dem, list) else str(dem)
         raster_sources.append(
-            RasterSourceConfig(name=dem_name, path=str(dem), optional=False)
+            RasterSourceConfig(name=dem_name, path=dem_path, optional=False)
         )
     if orthophoto:
+        ortho_path = [str(p) for p in orthophoto] if isinstance(orthophoto, list) else str(orthophoto)
         raster_sources.append(
             RasterSourceConfig(name=orthophoto_name or "orthophoto",
-                             path=str(orthophoto), optional=True)
+                             path=ortho_path, optional=True)
         )
 
     tabular_sources = []
@@ -233,6 +252,9 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     validate_all_sources(config)
 
     # ── Stage 2: Ingest ──────────────────────────────────────
+    # DEM/orthophoto tiles (if multiple were given) are merged
+    # into one seamless raster here, before anything downstream
+    # ever sees them.
     all_vectors, all_rasters, tabulars = load_all_sources(config)
     all_vectors.update(tabulars)  # tabular → point GeoDataFrames
 
@@ -301,6 +323,7 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
             _save_rasters(all_rasters, config.output.directory)
         )
 
+    # ── Done ──────────────────────────────────────────────────
     elapsed = time.perf_counter() - start
     logger.info("=" * 60)
     logger.info(f"PIPELINE COMPLETE in {elapsed:.2f}s")
@@ -328,8 +351,8 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
 # ── Public interface ─────────────────────────────────────────
 
 def run_pipeline(
-    dem: str | None = None,
-    orthophoto: str | None = None,
+    dem: str | list[str] | None = None,
+    orthophoto: str | list[str] | None = None,
     samples: str | None = None,
     vectors: dict[str, str] | None = None,
     study_area: str | None = None,
@@ -353,9 +376,19 @@ def run_pipeline(
         output_dir = r"path/to/output",
     )
 
+    dem and orthophoto can each be a single path OR a list of
+    paths. If a list is given, the tiles are merged into one
+    seamless raster automatically — useful when a study area
+    spans more than one DEM/orthophoto tile:
+
+    result = run_pipeline(
+        dem        = [r"path/to/tile1.tif", r"path/to/tile2.tif"],
+        study_area = r"path/to/boundary.geojson",
+    )
+
     Pipeline stages:
         1. Validate   check files before loading
-        2. Ingest     load all data sources
+        2. Ingest     load all data sources (merge tiles if needed)
         3. CRS        reproject everything to WGS84
         4. Clip       clip to study area (required)
         5. Schema     standardize field names
@@ -365,12 +398,12 @@ def run_pipeline(
 
     Parameters
     ----------
-    dem : str, optional
-        Path to DEM/elevation raster (.tif).
+    dem : str, list[str], optional
+        Path (or list of tile paths) to DEM/elevation raster(s).
         Required for 3D visualization.
 
-    orthophoto : str, optional
-        Path to satellite/aerial image (.tif).
+    orthophoto : str, list[str], optional
+        Path (or list of tile paths) to satellite/aerial image(s).
         Textures the 3D terrain surface if provided.
 
     samples : str, optional
@@ -426,12 +459,21 @@ def run_pipeline(
 
     Examples
     --------
+    Single DEM tile:
+
     >>> from geostack3d import run_pipeline
     >>> result = run_pipeline(
     ...     dem        = r"C:/data/dem.tif",
     ...     samples    = r"C:/data/samples.csv",
     ...     study_area = r"C:/data/boundary.geojson",
     ...     output_dir = r"C:/data/output",
+    ... )
+
+    Multiple DEM tiles (study area spans two tiles):
+
+    >>> result = run_pipeline(
+    ...     dem        = [r"C:/data/dem_tile1.tif", r"C:/data/dem_tile2.tif"],
+    ...     study_area = r"C:/data/boundary.geojson",
     ... )
 
     Then view 3D:

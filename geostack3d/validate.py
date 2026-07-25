@@ -160,6 +160,9 @@ def validate_all_sources(config) -> None:
     Required sources (optional: false) that are missing stop
     the pipeline immediately. The study area is always
     required — see PipelineConfig.study_area_required.
+
+    Raster sources can specify multiple tile paths, in which
+    case every tile is validated individually.
     """
     logger.info("Pre-flight: Validating all source files...")
 
@@ -167,29 +170,35 @@ def validate_all_sources(config) -> None:
     skipped = []
 
     def _validate_source(src, check_fn, source_type):
-        """Helper: validate one source, respecting optional flag."""
-        path = Path(src.path)
-        if not path.exists():
+        """Helper: validate one source (or multiple tiles), respecting optional flag."""
+        paths = src.path if isinstance(src.path, list) else [src.path]
+        path_objs = [Path(p) for p in paths]
+
+        missing = [p for p in path_objs if not p.exists()]
+        if missing:
             if src.optional:
                 skipped.append(src.name)
                 logger.warning(
-                    f"  [validate] '{src.name}': file not found — "
+                    f"  [validate] '{src.name}': {len(missing)} tile(s) not found — "
                     f"skipping (optional=true).\n"
-                    f"  Path: {src.path}"
+                    f"  Missing: {[str(m) for m in missing]}"
                 )
                 return False
             else:
                 errors.append(
-                    f"[{src.name}] Required file not found: {src.path}"
+                    f"[{src.name}] Required file(s) not found: "
+                    f"{[str(m) for m in missing]}"
                 )
                 return False
+
         try:
-            check_file_exists(src.path, src.name)
-            check_extension(src.path, src.name,
-                          VECTOR_EXTENSIONS if source_type == "vector"
-                          else RASTER_EXTENSIONS if source_type == "raster"
-                          else TABULAR_EXTENSIONS)
-            check_fn(src.path, src.name)
+            for p in path_objs:
+                check_file_exists(str(p), src.name)
+                check_extension(str(p), src.name,
+                              VECTOR_EXTENSIONS if source_type == "vector"
+                              else RASTER_EXTENSIONS if source_type == "raster"
+                              else TABULAR_EXTENSIONS)
+                check_fn(str(p), src.name)
             return True
         except Exception as e:
             errors.append(str(e))
