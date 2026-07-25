@@ -305,19 +305,24 @@ def make_3d_scene_pyvista(
     plotter = pv.Plotter(notebook=notebook)
 
     if orthophoto_texture is not None:
-        # Texture mapping needs explicit (u, v) coordinates per
-        # mesh point — essentially "which pixel of the image
-        # corresponds to which point on the mesh". Since our mesh
-        # is a regular grid built the same way as the image, a
-        # simple 0-1 normalised grid of texture coordinates lines
-        # them up correctly.
-        u_coords, v_coords = np.meshgrid(
-            np.linspace(0, 1, terrain.dimensions[0]),
-            np.linspace(0, 1, terrain.dimensions[1]),
-        )
+        # Compute each point's texture coordinate directly from its
+        # real longitude/latitude, relative to the orthophoto's own
+        # true bounds — more robust than assuming a simple linear
+        # correspondence, since the orthophoto's exact extent can
+        # differ slightly from the DEM's.
+        ortho_left, ortho_bottom = orthophoto.bounds.left, orthophoto.bounds.bottom
+        ortho_right, ortho_top = orthophoto.bounds.right, orthophoto.bounds.top
+
+        u_coords = (lon_grid - ortho_left) / (ortho_right - ortho_left)
+        # v is flipped: image row 0 is the TOP of the photo, but
+        # latitude increases upward — without this flip the texture
+        # renders upside down.
+        v_coords = 1.0 - (lat_grid - ortho_bottom) / (ortho_top - ortho_bottom)
+
+        u_grid, v_grid = np.meshgrid(u_coords, v_coords)
         texture_coords = np.column_stack([
-            u_coords.flatten(order="F"),
-            v_coords.flatten(order="F"),
+            u_grid.flatten(order="F"),
+            v_grid.flatten(order="F"),
         ])
         terrain.active_texture_coordinates = texture_coords
 
