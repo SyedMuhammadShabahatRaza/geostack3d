@@ -28,9 +28,9 @@
 #   2. Ingest       load all data sources (merging DEM tiles if needed)
 #   3. CRS          reproject everything to WGS84 (EPSG:4326)
 #                   including study area (handles UTM input)
-#   4. Clip         clip all layers to study area
-#   5. Schema       standardize field names and data types
-#   6. Geometry     detect and repair invalid geometries
+#   4. Geometry     detect and repair invalid geometries
+#   5. Clip         clip all layers to study area
+#   6. Schema       standardize field names and data types
 #   7. QA           run data quality checks
 #   8. Save         export processed files
 #   9. Visualize    build interactive 3D scene (PyVista)
@@ -286,25 +286,29 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
         except Exception as e:
             logger.warning(f"  Could not reproject study area: {e}")
 
-    # ── Stage 4: Clip to study area ──────────────────────────
-    logger.info("Stage 4: Clipping to study area...")
+    # ── Stage 4: Geometry repair ──────────────────────────────
+    # Must happen BEFORE clipping — clipping needs valid geometry
+    # to work correctly. An invalid (self-crossing) layer would
+    # crash gpd.clip() with a TopologyException before it ever
+    # got a chance to be repaired.
+    logger.info("Stage 4: Geometry validation and repair...")
+    all_vectors = repair_geometries(all_vectors, config.geometry)
+
+    # ── Stage 5: Clip to study area ──────────────────────────
+    logger.info("Stage 5: Clipping to study area...")
     spatial = SpatialHarmonizer(config.spatial)
     all_vectors = spatial.clip_vectors(all_vectors)
     if all_rasters:
         all_rasters = spatial.clip_rasters(all_rasters)
 
-    # ── Stage 5: Schema harmonization ────────────────────────
-    logger.info("Stage 5: Schema harmonization...")
+    # ── Stage 6: Schema harmonization ────────────────────────
+    logger.info("Stage 6: Schema harmonization...")
     all_source_configs = (
         list(config.vector_sources) + list(config.tabular_sources)
     )
     all_vectors = harmonize_schema(
         all_vectors, config.schema_config, all_source_configs
     )
-
-    # ── Stage 6: Geometry repair ──────────────────────────────
-    logger.info("Stage 6: Geometry validation and repair...")
-    all_vectors = repair_geometries(all_vectors, config.geometry)
 
     # ── Stage 7: QA checks ────────────────────────────────────
     logger.info("Stage 7: QA checks...")
@@ -390,9 +394,9 @@ def run_pipeline(
         1. Validate   check files before loading
         2. Ingest     load all data sources (merge tiles if needed)
         3. CRS        reproject everything to WGS84
-        4. Clip       clip to study area (required)
-        5. Schema     standardize field names
-        6. Geometry   repair invalid geometries
+        4. Geometry   repair invalid geometries
+        5. Clip       clip to study area (required)
+        6. Schema     standardize field names
         7. QA         data quality checks
         8. Save       export processed files
 
