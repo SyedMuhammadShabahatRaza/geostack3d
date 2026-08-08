@@ -3,6 +3,8 @@
 # ============================================================
 # PURPOSE:
 #   Find broken/invalid geometries and fix them automatically.
+#   Also fixes self-crossing LINES, which are a genuinely
+#   different problem from invalid polygons (see below).
 #
 # WHAT IS AN "INVALID" GEOMETRY?
 #   A geometry that breaks the mathematical rules of what a
@@ -25,6 +27,24 @@
 #   Like checking that every digitized fault polygon actually
 #   closes properly before you calculate its area. A polygon
 #   that doesn't close isn't really a polygon — it's a typo.
+#
+# ── A SEPARATE PROBLEM: SELF-CROSSING LINES ──────────────────
+#   For a LineString, self-crossing is NOT a validity violation
+#   under OGC rules — is_valid can report True even when a line
+#   crosses itself (a line has no "inside/outside" concept, so
+#   the rules that make self-crossing invalid for a Polygon
+#   simply don't apply). BUT an un-noded self-crossing line can
+#   still crash clip operations, because overlay algorithms
+#   (used by gpd.clip()) require every crossing point to be
+#   explicitly registered as a vertex — a requirement that
+#   is_valid never checks.
+#
+#   Shapely's .is_simple property is the correct check for
+#   this: a LineString is "simple" if it does NOT self-cross.
+#   This file checks is_simple separately from is_valid, and
+#   "nodes" any self-crossing line using unary_union() — which
+#   splits it into a MultiLineString with an explicit vertex at
+#   every crossing point, making it safe to clip.
 # ============================================================
 
 import geopandas as gpd
@@ -33,6 +53,13 @@ import geopandas as gpd
 # and "polygon" actually are, and the math rules they follow.
 # make_valid() is shapely's built-in repair function.
 from shapely import make_valid
+
+# unary_union() is used here for a DIFFERENT purpose than a
+# typical "merge multiple shapes" union — for a single
+# self-crossing line, it nodes the geometry at every crossing
+# point, splitting it into a MultiLineString with no unmarked
+# intersections left.
+from shapely.ops import unary_union
 
 # explain_validity() tells us WHY a geometry is invalid —
 # useful for logging/debugging, not for the fix itself.
@@ -85,13 +112,50 @@ def _repair_one_geometry(geom):
         return geom.buffer(0)
 
 
+def _node_line_if_self_crossing(geom):
+    """
+    Check a single geometry for self-crossing (only meaningful
+    for LineString/MultiLineString) and "node" it if needed.
+
+    This is checked INDEPENDENTLY of is_valid, since a
+    self-crossing line can be perfectly valid under OGC rules
+    while still being unsafe to clip. See module docstring for
+    the full explanation.
+
+    Parameters
+    ----------
+    geom : shapely geometry or None
+
+    Returns
+    -------
+    The original geometry, unchanged, if it's not a line type
+    or doesn't self-cross. A noded MultiLineString if it does.
+    """
+    if geom is None:
+        return geom
+
+    if geom.geom_type not in ("LineString", "MultiLineString"):
+        return geom  # only lines can have this specific problem
+
+    if geom.is_simple:
+        return geom  # no self-crossing — nothing to do
+
+    # unary_union() on a single self-crossing line finds every
+    # crossing point and inserts an explicit vertex there,
+    # splitting the result into a MultiLineString with no
+    # unmarked intersections left.
+    return unary_union(geom)
+
+
 def repair_geometries(
     vectors: dict[str, gpd.GeoDataFrame],
     config: GeometryConfig,
 ) -> dict[str, gpd.GeoDataFrame]:
     """
     Check every vector layer for invalid/null geometries and
-    fix what can be fixed.
+    fix what can be fixed. Also checks lines for self-crossing
+    (a separate concern from validity — see module docstring)
+    and automatically nodes them so they're safe to clip.
 
     Parameters
     ----------
@@ -117,7 +181,7 @@ def repair_geometries(
     >>> result["formations"].geometry.is_valid.all()
     True
     """
-    logger.info("Stage 3: Validating and repairing geometries...")
+    logger.info("Stage 4: Validating and repairing geometries...")
 
     result: dict[str, gpd.GeoDataFrame] = {}
 
@@ -183,7 +247,28 @@ def repair_geometries(
                     "geometry.auto_repair: true in your YAML config."
                 )
 
-        # ── Step 3: final validity check ──────────────────────
+        # ── Step 3: node self-crossing lines ─────────────────
+        # This is a SEPARATE check from is_valid (Step 2 above).
+        # A self-crossing LineString can be perfectly valid under
+        # OGC rules, but still crash clip operations later if its
+        # crossing point isn't explicitly registered as a vertex.
+        # See module docstring for the full explanation.
+        is_line_type = gdf.geometry.geom_type.isin(["LineString", "MultiLineString"])
+        if is_line_type.any():
+            is_non_simple = ~gdf.loc[is_line_type, "geometry"].is_simple
+            n_self_crossing = is_non_simple.sum()
+
+            if n_self_crossing > 0:
+                logger.warning(
+                    f"  '{name}': found {n_self_crossing} self-crossing "
+                    "line(s) — noding to make clip-safe."
+                )
+                crossing_idx = is_non_simple[is_non_simple].index
+                gdf.loc[crossing_idx, "geometry"] = (
+                    gdf.loc[crossing_idx, "geometry"].apply(_node_line_if_self_crossing)
+                )
+
+        # ── Step 4: final validity check ──────────────────────
         # Even after repair, double-check the result. Sometimes
         # repair can't fully fix extremely broken geometries.
         valid_rate = gdf.geometry.is_valid.mean()  # mean of True/False = % valid
