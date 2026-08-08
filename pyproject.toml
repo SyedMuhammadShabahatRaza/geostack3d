@@ -1,95 +1,45 @@
 # ============================================================
 # pyproject.toml
 # ============================================================
-# This file tells Python:
-#   - What your package is called
-#   - What other libraries it needs to work
-#   - How to install it
-#
-# Once this file exists, you can install your package by
-# running this command in the terminal:
-#
-#   pip install -e .
-#
-# The "-e" means "editable" — changes you make to the code
-# take effect immediately without reinstalling.
-# ============================================================
-
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# The name people will use when they install your package
 name = "geostack3d"
-
-# Your package version. Update this when you make big changes.
 version = "0.1.0"
-
-# A one-line description
 description = "A practical GIS data harmonization and 3D visualization pipeline"
-
-# Points to your README file for longer documentation
 readme = "README.md"
-
-# Minimum Python version required
 requires-python = ">=3.10"
-
-# Author name and email
 authors = [
     { name = "Syed M. S. Raza", email = "shabahatnaqvi786@gmail.com" }
 ]
 
-# ── Required libraries ──────────────────────────────────────
-# These are installed automatically when someone installs geostack3d
-# Think of these as the "tools in your toolbox" your code needs
+# ── Required libraries — EXACT versions pinned ──────────────
 dependencies = [
-    # --- Reading and working with vector GIS data (shapefiles, geojson etc.) ---
-    "geopandas>=0.14",      # the main GIS library — like pandas but for maps
-
-    # --- Reading raster data (GeoTIFF, NetCDF) ---
-    "rasterio>=1.3",        # opens and reads raster files
-
-    # --- Coordinate reference systems and reprojection ---
-    "pyproj>=3.6",          # converts between coordinate systems (CRS)
-
-    # --- Geometry operations (fixing shapes, checking validity) ---
-    "shapely>=2.0",         # works with geometric shapes (polygons, lines, points)
-    
-    # --- Deal with KML/KMZ format
-    "fiona>=1.9",           # enables KML/KMZ file reading (not always bundled with geopandas)
-
-    # --- Reading CSV and Excel files ---
-    "pandas>=2.0",          # tabular data — you likely already know this one
-    "openpyxl>=3.1",        # lets pandas read .xlsx Excel files
-
-    # --- Saving to fast GeoParquet format ---
-    "pyarrow>=14.0",        # fast file format for large datasets
-
-    # --- Validating config values ---
-    "pydantic>=2.0",        # checks your config values are correct types
-
-    # --- Better logging messages ---
-    "loguru>=0.7",          # prettier, more informative log messages
-
-    # --- 3D terrain visualization ---
-    "pyvista>=0.43",        # builds the interactive 3D scene (terrain + orthophoto)
+    "geopandas==1.1.4",
+    "rasterio==1.5.0",
+    "pyproj==3.7.2",
+    "shapely==2.1.2",
+    "fiona==1.10.1",
+    "pandas==2.3.3",
+    "openpyxl==3.1.5",
+    "pyarrow==21.0.0",
+    "pydantic==2.12.4",
+    "loguru==0.7.3",
+    "pyvista==0.48.4",
 ]
 
-# ── Optional extras ─────────────────────────────────────────
-# Install these with:  pip install geostack3d[dev]
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4",          # the testing framework
-    "pytest-cov>=4.1",      # shows which lines of code are covered by tests
+    "pytest==8.4.2",
+    "pytest-cov==7.1.0",
 ]
 
-# ── How to find the package files ───────────────────────────
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["geostack3d"]
 
-# ── Test configuration ───────────────────────────────────────
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=geostack3d --cov-report=term-missing -v"

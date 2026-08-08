@@ -58,7 +58,7 @@ from geostack3d import run_pipeline
 result = run_pipeline(
     dem        = r"path/to/dem.tif",
     orthophoto = r"path/to/orthophoto.tif",     # optional
-    samples    = r"path/to/samples.csv",         # optional
+    samples    = r"path/to/samples.csv",         # optional, or a list/dict of multiple files
     study_area = r"path/to/study_area.geojson",  # required
     output_dir = r"path/to/output",
 )
@@ -70,6 +70,9 @@ process a full raster tile at full extent — a USGS DEM tile can be
 Only `dem` and `study_area` are strictly required; `orthophoto`, `samples`,
 and additional `vectors` are all optional and skipped gracefully if not
 provided.
+
+`samples` can be a single path, a list of paths, or a `{name: path}` dict —
+letting you load multiple CSV/Excel sample sheets in one call.
 
 ### View the 3D scene
 
@@ -92,17 +95,17 @@ plotter.show()
 
 ## What Happens, Step by Step
 
-  S/no  | Stage   | File                   | What it does |
-|-------|---------|------------------------|---------------
-| 1.    |Validate | `validate.py`          | Checks every input file exists and is readable *before* loading anything, including the required study area |
-| 2.    |Ingest   | `ingest.py`            | Loads vector, raster, and CSV/Excel sources (KMZ auto-extracts to KML) |
-| 3.    |CRS      | `crs.py`               | Reprojects every layer — including the study area — to one target CRS |
-| 4.    |Clip     | `spatial.py`           | Clips all layers to the study area boundary (runs *after* CRS harmonization, so no per-layer reprojection is needed at clip time) |
-| 5.    |Schema   | `schema.py`            | Standardizes field names and data types across layers |
-| 6.    |Geometry | `geometry.py`          | Detects and repairs invalid geometries (common with hand-digitized KML data) |
-| 7.    |QA       | `qa.py`                | Runs data quality checks; halts or warns depending on config |
-| 8.    |Save     | `pipeline.py`          | Writes processed vector/raster outputs to disk |
-| 9.    |Visualize| `visualize_pyvista.py` | Builds the interactive 3D scene (called separately, not part of `run_pipeline()`) |
+  S/no  | Stage    | File                   | What it does |
+|-------|----------|------------------------|---------------
+| 1.    | Validate | `validate.py`          | Checks every input file exists and is readable *before* loading anything, including the required study area |
+| 2.    | Ingest   | `ingest.py`            | Loads vector, raster, and CSV/Excel sources (KMZ auto-extracts to KML) |
+| 3.    | CRS      | `crs.py`               | Reprojects every layer — including the study area — to one target CRS |
+| 4.    | Geometry | `geometry.py`          | Detects and repairs invalid geometries (common with hand-digitized KML data) — including the study area's own boundary |
+| 5.    | Clip     | `spatial.py`           | Clips all layers to the study area boundary (runs *after* geometry repair, so invalid geometry can't crash the clip operation) |
+| 6.    | Schema   | `schema.py`            | Standardizes field names and data types across layers |
+| 7.    | QA       | `qa.py`                | Runs data quality checks; halts or warns depending on config |
+| 8.    | Save     | `pipeline.py`          | Writes processed vector/raster outputs to disk |
+| 9.    | Visualize| `visualize_pyvista.py` | Builds the interactive 3D scene (called separately, not part of `run_pipeline()`) |
 
 Every optional data source (`orthophoto`, `samples`, additional vector
 layers) is skipped gracefully if missing, rather than stopping the run.
@@ -112,14 +115,25 @@ The DEM and study area are the only required inputs.
 
 ## Project Structure
 
-
+```
 geostack3d/
 ├── README.md
+├── CHANGELOG.md
+├── DATA_LIFECYCLE.md
+├── Dockerfile
 ├── .gitignore
 ├── pyproject.toml
+├── tests/
+│   ├── conftest.py
+│   ├── test_config.py
+│   ├── test_geometry.py
+│   ├── test_crs.py
+│   ├── test_schema.py
+│   ├── test_qa.py
+│   └── test_validate.py
 └── geostack3d/
     ├── __init__.py
-    ├── config.py              
+    ├── config.py
     ├── validate.py
     ├── ingest.py
     ├── crs.py
@@ -127,10 +141,11 @@ geostack3d/
     ├── schema.py
     ├── geometry.py
     ├── qa.py
-    ├── visualize_pyvista.py   
-    └── pipeline.py           
+    ├── visualize_pyvista.py
+    └── pipeline.py
+```
 
-
+---
 
 ## Running One Stage at a Time
 
@@ -171,10 +186,34 @@ vectors = harmonize_crs(vectors, config.crs)
 
 ---
 
+## Testing
+
+An automated test suite covers config validation, geometry repair, CRS
+harmonization, schema harmonization, and QA checks:
+
+```bash
+pip install -e .[dev]
+pytest
+```
+
+---
+
+## Docker
+
+A `Dockerfile` is included for a fully reproducible, containerized
+environment:
+
+```bash
+docker build -t geostack3d .
+docker run -it geostack3d
+```
+
+---
+
 ## Status
 
 Core pipeline and 3D visualization are functional and tested against a
 real USGS DEM tile (Hindu Kush region) and synthetic geochemistry sample
-points at real field coordinates. A `tests/` directory covering config
-validation, geometry repair, schema harmonization, QA, and full pipeline
-integration is in progress.
+points at real field coordinates. See `DATA_LIFECYCLE.md` for the source
+and provenance of each real input dataset used during development, and
+`CHANGELOG.md` for a full history of fixes and changes.
