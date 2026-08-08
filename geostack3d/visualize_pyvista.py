@@ -400,12 +400,15 @@ def make_3d_scene_pyvista(
 
     # ── Draped faults (lines) ─────────────────────────────────
     for name, gdf in vectors.items():
-        if gdf.geometry.geom_type.iloc[0] not in ("LineString",):
+        if gdf.geometry.geom_type.iloc[0] not in ("LineString", "MultiLineString"):
             continue
 
         for _, row in gdf.iterrows():
-            line = row.geometry
-            lons, lats = line.xy
+            geom = row.geometry
+            sub_lines = [geom] if geom.geom_type == "LineString" else list(geom.geoms)
+
+            for line in sub_lines:
+                lons, lats = line.xy
             lons, lats = list(lons), list(lats)
 
             elevations = _sample_elevation_at_points(dem, lons, lats)

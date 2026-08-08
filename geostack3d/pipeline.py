@@ -18,10 +18,17 @@
 #   dem / orthophoto can also be a LIST of paths, in which case
 #   the tiles are automatically merged into one seamless raster.
 #
-#   samples can now be a single path, a LIST of paths (each
-#   auto-named samples_0, samples_1, ...), or a DICT of
-#   {name: path} pairs (each keeping the name you give it) —
-#   so multiple CSV/Excel sources can be loaded in one call.
+#   samples can be a single path, a list of paths, or a dict of
+#   {name: path} pairs — see run_pipeline() docstring.
+#
+#   field_map and canonical_fields (previously only available
+#   via a manual PipelineConfig) are now exposed directly:
+#      result = run_pipeline(
+#          vectors = {"path": r"path/to/path.kml"},
+#          field_map = {"path": {"Name": "feature_name"}},
+#          canonical_fields = {"feature_name": "str"},
+#          ...
+#      )
 #
 # PIPELINE SEQUENCE:
 #   1. Validate     check all files before loading anything
@@ -29,7 +36,8 @@
 #   3. CRS          reproject everything to WGS84 (EPSG:4326)
 #                   including study area (handles UTM input)
 #   4. Geometry     detect and repair invalid geometries
-#                   (including the study area's own boundary)
+#                   (including the study area's own boundary,
+#                   and self-crossing lines via noding)
 #   5. Clip         clip all layers to study area
 #   6. Schema       standardize field names and data types
 #   7. QA           run data quality checks
@@ -118,7 +126,6 @@ def _save_rasters(
     saved = []
 
     for name, ds in rasters.items():
-        # Handle both MemoryFile and open DatasetReader
         if isinstance(ds, rasterio.io.MemoryFile):
             src = ds.open()
         else:
@@ -143,6 +150,7 @@ def _build_tabular_sources(
     samples,
     lon_col: str,
     lat_col: str,
+    field_map: dict[str, dict[str, str]] | None,
 ) -> list[TabularSourceConfig]:
     """
     Build the list of TabularSourceConfig objects from the
@@ -153,15 +161,18 @@ def _build_tabular_sources(
 
     All sources share the same lon_col/lat_col — if your files
     use genuinely different column names, build a PipelineConfig
-    manually instead (see README / Limitations).
+    manually instead.
+
+    field_map (if given) is a dict of {source_name: {old: new}}
+    — each source's own rename map is looked up by its name.
     """
     tabular_sources = []
+    field_map = field_map or {}
 
     if samples is None:
         return tabular_sources
 
     if isinstance(samples, dict):
-        # e.g. {"team_a": "samples_teamA.csv", "team_b": "samples_teamB.csv"}
         for name, path in samples.items():
             tabular_sources.append(
                 TabularSourceConfig(
@@ -169,30 +180,31 @@ def _build_tabular_sources(
                     path=str(path),
                     lon_col=lon_col,
                     lat_col=lat_col,
+                    field_map=field_map.get(name, {}),
                     optional=True,
                 )
             )
     elif isinstance(samples, list):
-        # e.g. ["file1.csv", "file2.csv"] — no names given, so we
-        # generate simple ones: samples_0, samples_1, ...
         for i, path in enumerate(samples):
+            name = f"samples_{i}"
             tabular_sources.append(
                 TabularSourceConfig(
-                    name=f"samples_{i}",
+                    name=name,
                     path=str(path),
                     lon_col=lon_col,
                     lat_col=lat_col,
+                    field_map=field_map.get(name, {}),
                     optional=True,
                 )
             )
     else:
-        # Original behavior: a single path, single source named "samples"
         tabular_sources.append(
             TabularSourceConfig(
                 name="samples",
                 path=str(samples),
                 lon_col=lon_col,
                 lat_col=lat_col,
+                field_map=field_map.get("samples", {}),
                 optional=True,
             )
         )
@@ -214,24 +226,30 @@ def _build_config_from_args(
     z_exaggeration: float,
     dem_name: str,
     orthophoto_name: str | None,
+    field_map: dict[str, dict[str, str]] | None,
+    canonical_fields: dict[str, str] | None,
+    drop_extra_fields: bool,
 ) -> PipelineConfig:
     """
     Build a PipelineConfig from simple function arguments.
 
-    This allows run_pipeline() to be called with file paths
-    directly instead of requiring a YAML config file.
-
-    dem and orthophoto can each be a single path or a list of
-    paths (multiple tiles to be merged into one raster).
-
-    samples can be a single path, a list of paths, or a dict of
-    {name: path} — see _build_tabular_sources() for details.
+    field_map is a dict of {source_name: {old_col: new_col}} —
+    each vector/tabular source's own rename map is looked up by
+    its name. canonical_fields is a single dict of
+    {field_name: type} applied globally across every layer.
     """
+    field_map = field_map or {}
+
     vector_sources = []
     if vectors:
         for name, path in vectors.items():
             vector_sources.append(
-                VectorSourceConfig(name=name, path=str(path), optional=True)
+                VectorSourceConfig(
+                    name=name,
+                    path=str(path),
+                    field_map=field_map.get(name, {}),
+                    optional=True,
+                )
             )
 
     raster_sources = []
@@ -247,7 +265,7 @@ def _build_config_from_args(
                              path=ortho_path, optional=True)
         )
 
-    tabular_sources = _build_tabular_sources(samples, lon_col, lat_col)
+    tabular_sources = _build_tabular_sources(samples, lon_col, lat_col, field_map)
 
     if not raster_sources and not vector_sources and not tabular_sources:
         raise ValueError(
@@ -263,8 +281,8 @@ def _build_config_from_args(
         crs=CRSConfig(project_epsg=project_crs),
         geometry=GeometryConfig(auto_repair=True),
         schema_config=SchemaConfig(
-            canonical_fields={},
-            drop_extra_fields=False,
+            canonical_fields=canonical_fields or {},
+            drop_extra_fields=drop_extra_fields,
         ),
         spatial=SpatialConfig(
             study_area_path=str(study_area) if study_area else None,
@@ -307,18 +325,10 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     validate_all_sources(config)
 
     # ── Stage 2: Ingest ──────────────────────────────────────
-    # DEM/orthophoto tiles (if multiple were given) are merged
-    # into one seamless raster here, before anything downstream
-    # ever sees them. Multiple tabular sources are each loaded
-    # and converted to point GeoDataFrames independently.
     all_vectors, all_rasters, tabulars = load_all_sources(config)
     all_vectors.update(tabulars)  # tabular → point GeoDataFrames
 
     # ── Stage 3: CRS harmonization ───────────────────────────
-    # Must happen BEFORE clipping — the study area and data
-    # layers can be in different CRS, so clipping first was
-    # comparing geometries in mismatched coordinate systems
-    # and silently producing empty or wrong results.
     logger.info("Stage 3: CRS harmonization...")
     all_vectors = harmonize_crs(all_vectors, config.crs)
     if all_rasters:
@@ -343,20 +353,16 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
             logger.warning(f"  Could not reproject study area: {e}")
 
     # ── Stage 4: Geometry repair ──────────────────────────────
-    # Must happen BEFORE clipping — clipping needs valid geometry
-    # to work correctly. An invalid (self-crossing) layer would
-    # crash gpd.clip() with a TopologyException before it ever
-    # got a chance to be repaired.
+    # Repairs invalid geometry AND nodes self-crossing lines,
+    # both before clipping, since either problem can crash
+    # gpd.clip() if left unaddressed.
     logger.info("Stage 4: Geometry validation and repair...")
     all_vectors = repair_geometries(all_vectors, config.geometry)
 
     # ── Stage 5: Clip to study area ──────────────────────────
     # SpatialHarmonizer also receives config.geometry, so the
-    # study area's OWN boundary geometry is checked/repaired the
-    # moment it's loaded — closing a gap discovered during
-    # testing, where the study area could crash clipping with a
-    # TopologyException, since it never went through
-    # repair_geometries() like every other vector layer did.
+    # study area's own boundary is checked/repaired the moment
+    # it's loaded.
     logger.info("Stage 5: Clipping to study area...")
     spatial = SpatialHarmonizer(config.spatial, config.geometry)
     all_vectors = spatial.clip_vectors(all_vectors)
@@ -430,6 +436,9 @@ def run_pipeline(
     z_exaggeration: float = 2.0,
     dem_name: str = "dem",
     orthophoto_name: str | None = "orthophoto",
+    field_map: dict[str, dict[str, str]] | None = None,
+    canonical_fields: dict[str, str] | None = None,
+    drop_extra_fields: bool = False,
 ) -> dict:
     """
     Run the full GeoStack3D pipeline.
@@ -443,35 +452,35 @@ def run_pipeline(
     )
 
     dem and orthophoto can each be a single path OR a list of
-    paths. If a list is given, the tiles are merged into one
-    seamless raster automatically.
+    paths (merged into one seamless raster).
 
-    samples can now be:
-      - a single path (string)  -> one source, named "samples"
-      - a list of paths         -> auto-named samples_0, samples_1, ...
-      - a dict of {name: path}  -> keeps the names you give it
+    samples can be a single path, a list of paths, or a dict of
+    {name: path} pairs.
+
+    field_map and canonical_fields (previously only available
+    via a manual PipelineConfig) can now be passed directly:
 
     result = run_pipeline(
-        dem     = r"path/to/dem.tif",
-        samples = {
-            "team_a": r"path/to/samples_teamA.csv",
-            "team_b": r"path/to/samples_teamB.csv",
-        },
+        vectors = {"path": r"path/to/path.kml"},
+        field_map = {"path": {"Name": "feature_name"}},
+        canonical_fields = {"feature_name": "str"},
+        drop_extra_fields = True,
         study_area = r"path/to/boundary.geojson",
     )
 
-    Note: all tabular sources share the same lon_col/lat_col.
-    If your files use genuinely different column names, build a
-    PipelineConfig manually with per-source TabularSourceConfig
-    objects instead.
+    field_map is a dict of {source_name: {old_col: new_col}} —
+    each source's own rename map is looked up by its name (the
+    key you gave it in `vectors=` or `samples=`). canonical_fields
+    is a single dict of {field_name: type} applied globally
+    across every vector/tabular layer.
 
     Pipeline stages:
         1. Validate   check files before loading
         2. Ingest     load all data sources (merge tiles if needed)
         3. CRS        reproject everything to WGS84
-        4. Geometry   repair invalid geometries (incl. study area)
+        4. Geometry   repair invalid geometries + node self-crossing lines
         5. Clip       clip to study area (required)
-        6. Schema     standardize field names
+        6. Schema     standardize field names (field_map, canonical_fields)
         7. QA         data quality checks
         8. Save       export processed files
 
@@ -479,27 +488,19 @@ def run_pipeline(
     ----------
     dem : str, list[str], optional
         Path (or list of tile paths) to DEM/elevation raster(s).
-        Required for 3D visualization.
 
     orthophoto : str, list[str], optional
         Path (or list of tile paths) to satellite/aerial image(s).
-        Textures the 3D terrain surface if provided.
 
     samples : str, list[str], dict[str, str], optional
         One or more CSV/Excel files with coordinate columns.
-        See examples above.
 
     vectors : dict[str, str], optional
         Additional vector layers as {name: path}.
-        Example: {"faults": r"path/to/faults.geojson"}
 
     study_area : str
         REQUIRED. Path to a polygon file defining the area of
-        interest. All layers are clipped to this boundary.
-        Accepts any CRS — reprojected automatically. The study
-        area's own geometry is also validated/repaired
-        automatically, using the same rules as every other
-        vector layer.
+        interest.
 
     lon_col : str
         Longitude column name, shared across all tabular
@@ -517,7 +518,6 @@ def run_pipeline(
 
     vector_format : str
         Output format: gpkg | geojson | shp | parquet
-        Default: "gpkg"
 
     z_exaggeration : float
         Vertical exaggeration for 3D terrain. Default: 2.0
@@ -526,8 +526,18 @@ def run_pipeline(
         Internal name for the DEM layer. Default: "dem"
 
     orthophoto_name : str or None
-        Internal name for the orthophoto layer.
-        Default: "orthophoto"
+        Internal name for the orthophoto layer. Default: "orthophoto"
+
+    field_map : dict[str, dict[str, str]], optional
+        Per-source column renaming: {source_name: {old: new}}.
+
+    canonical_fields : dict[str, str], optional
+        Global target fields and types: {field_name: type}.
+        Applied to every vector/tabular layer.
+
+    drop_extra_fields : bool
+        If True, only canonical_fields (+ geometry) are kept in
+        the output; all other columns are dropped. Default: False.
 
     Returns
     -------
@@ -542,23 +552,17 @@ def run_pipeline(
 
     Examples
     --------
-    Single DEM tile, single sample file:
-
     >>> from geostack3d import run_pipeline
     >>> result = run_pipeline(
     ...     dem        = r"C:/data/dem.tif",
-    ...     samples    = r"C:/data/samples.csv",
-    ...     study_area = r"C:/data/boundary.geojson",
-    ...     output_dir = r"C:/data/output",
-    ... )
-
-    Multiple DEM tiles AND multiple sample files:
-
-    >>> result = run_pipeline(
-    ...     dem     = [r"C:/data/dem_tile1.tif", r"C:/data/dem_tile2.tif"],
-    ...     samples = {"team_a": r"C:/data/teamA.csv", "team_b": r"C:/data/teamB.csv"},
+    ...     vectors    = {"polygon": r"C:/data/POLYGON.kml"},
+    ...     field_map  = {"polygon": {"Name": "feature_name"}},
+    ...     canonical_fields = {"feature_name": "str"},
+    ...     drop_extra_fields = True,
     ...     study_area = r"C:/data/boundary.geojson",
     ... )
+    >>> result["vectors"]["polygon"].columns
+    Index(['feature_name', 'geometry'], dtype='object')
 
     Then view 3D:
 
@@ -585,6 +589,9 @@ def run_pipeline(
         z_exaggeration=z_exaggeration,
         dem_name=dem_name,
         orthophoto_name=orthophoto_name,
+        field_map=field_map,
+        canonical_fields=canonical_fields,
+        drop_extra_fields=drop_extra_fields,
     )
 
     return _run_pipeline_from_config(config)
