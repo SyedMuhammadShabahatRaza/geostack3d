@@ -73,16 +73,33 @@ def _get_dem_grid(dataset):
 
 
 def _sample_elevation_at_points(dataset, lons: list[float], lats: list[float]) -> list[float]:
-    """Identical draping logic to visualize_3d.py."""
-    coords = list(zip(lons, lats))
-    elevations = []
-    for val in dataset.sample(coords):
-        pixel_value = val[0]
-        if dataset.nodata is not None and pixel_value == dataset.nodata:
-            elevations.append(np.nan)
-        else:
-            elevations.append(float(pixel_value))
-    return elevations
+    """
+    Sample elevation using BILINEAR interpolation, matching how
+    the terrain mesh itself interpolates between grid points.
+    Nearest-neighbor sampling (the old approach) could disagree
+    with the mesh surface at any point not exactly on a pixel
+    center, causing draped features to appear above or below
+    the actual visible terrain.
+    """
+    from scipy.ndimage import map_coordinates
+
+    elevation_array = dataset.read(1).astype(float)
+    if dataset.nodata is not None:
+        elevation_array = np.where(elevation_array == dataset.nodata, np.nan, elevation_array)
+
+    # Convert real-world (lon, lat) coordinates into fractional
+    # pixel row/col positions using the raster's inverse transform.
+    inv_transform = ~dataset.transform
+    cols, rows = [], []
+    for lon, lat in zip(lons, lats):
+        col, row = inv_transform * (lon, lat)
+        cols.append(col)
+        rows.append(row)
+
+    # order=1 = bilinear interpolation, matching the mesh's own
+    # interpolation between grid points.
+    elevations = map_coordinates(elevation_array, [rows, cols], order=1, mode="nearest")
+    return elevations.tolist()
 
 
 def _orthophoto_to_texture(dataset) -> np.ndarray:
@@ -303,6 +320,7 @@ def make_3d_scene_pyvista(
     terrain["Elevation (m)"] = elevation_grid.flatten(order="F")
 
     plotter = pv.Plotter(notebook=notebook)
+    plotter.enable_depth_peeling()  # helps resolve overlapping/coincident surfaces correctly
 
     if orthophoto_texture is not None:
         # Compute each point's texture coordinate directly from its
@@ -317,7 +335,7 @@ def make_3d_scene_pyvista(
         # v is flipped: image row 0 is the TOP of the photo, but
         # latitude increases upward — without this flip the texture
         # renders upside down.
-        v_coords = 1.0 - (lat_grid - ortho_bottom) / (ortho_top - ortho_bottom)
+        v_coords = (lat_grid - ortho_bottom) / (ortho_top - ortho_bottom)
 
         u_grid, v_grid = np.meshgrid(u_coords, v_coords)
         texture_coords = np.column_stack([
@@ -327,6 +345,7 @@ def make_3d_scene_pyvista(
         terrain.active_texture_coordinates = texture_coords
 
         texture = pv.numpy_to_texture(orthophoto_texture)
+        
         plotter.add_mesh(terrain, texture=texture, opacity=0.95)
     else:
         plotter.add_mesh(
@@ -347,7 +366,15 @@ def make_3d_scene_pyvista(
 
         x = (lons - lon_grid.min()) / horizontal_range
         y = (lats - lat_grid.min()) / horizontal_range
+
+        # No artificial lift needed — _sample_elevation_at_points()
+        # now uses bilinear interpolation, matching exactly how the
+        # mesh itself interpolates between grid points. This keeps
+        # draped features sitting precisely on the visible terrain
+        # surface, without the z-fighting/submersion issues a
+        # nearest-neighbor vs. bilinear mismatch used to cause.
         z = (elevations - np.nanmin(elevation_grid)) * z_scale_factor * z_exaggeration
+        
         return x, y, z
 
     # ── Draped boreholes (points) ─────────────────────────────
@@ -389,7 +416,7 @@ def make_3d_scene_pyvista(
             # from an ordered list of 3D points — the PyVista
             # equivalent of Plotly's mode="lines" Scatter3d.
             line_mesh = pv.lines_from_points(points)
-            plotter.add_mesh(line_mesh, color="black", line_width=4, label=name)
+            plotter.add_mesh(line_mesh, color="black", line_width=4, label=name, render_lines_as_tubes=True)
 
     # ── Draped formations (polygon outlines) ──────────────────
     for name, gdf in vectors.items():
