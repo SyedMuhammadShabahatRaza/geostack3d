@@ -6,9 +6,6 @@ formations, KML/KMZ boundaries), and geochemical sample CSVs — and fuses them
 into a single reproducible processing pipeline that outputs an interactive
 3D scene built with [PyVista](https://docs.pyvista.org/).
 
-Built as a course project for **Sustainable Computational Engineering**,
-RWTH Aachen University.
-
 ---
 
 ## Why this exists
@@ -90,6 +87,29 @@ plotter = make_3d_scene_pyvista(
 )
 plotter.show()
 ```
+
+### Adjusting vertical exaggeration
+
+Real-world elevation differences are often small relative to a study area's
+horizontal extent, which can make terrain relief difficult to perceive at a
+1:1 scale. The `z_exaggeration` parameter scales elevation values before
+rendering to make relief more visually apparent, without altering the
+underlying data:
+
+```python
+result = run_pipeline(
+    dem=dem_path,
+    study_area=study_area_path,
+    output_dir=output_dir,
+    z_exaggeration=2.0,  # default; increase for subtler terrain, decrease for steep terrain
+)
+```
+
+A higher value emphasizes relief in relatively flat terrain; a lower value
+(closer to 1.0) is more appropriate for already-steep terrain, where a high
+exaggeration factor can distort the scene and make it harder to interpret.
+This setting affects only the 3D visualization — it does not modify any
+saved output files or the underlying elevation data.
 
 ---
 
@@ -207,6 +227,21 @@ environment:
 docker build -t geostack3d .
 docker run -it geostack3d
 ```
+
+**Note:** the Docker image includes base `pyvista` (for building and saving
+3D scenes), but not PyVista's interactive Jupyter extras (`trame` and
+related packages) — those are only needed for rotating a 3D scene live
+inside a Jupyter notebook, which isn't the Docker container's use case.
+If you want interactive rendering, install it separately in your own
+environment:
+
+```bash
+pip install "pyvista[jupyter]"
+```
+
+Without this, `plotter.show()` in a notebook falls back to a static image
+instead of an interactive, rotatable view — the pipeline itself still works
+identically either way.
 
 ---
 
