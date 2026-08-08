@@ -26,7 +26,8 @@ import rasterio
 import rasterio.mask
 from loguru import logger
 
-from geostack3d.config import SpatialConfig
+from geostack3d.config import SpatialConfig, GeometryConfig
+from geostack3d.geometry import repair_geometries
 
 if TYPE_CHECKING:
     pass
@@ -39,15 +40,30 @@ class SpatialHarmonizer:
     Parameters
     ----------
     config : SpatialConfig
+    geometry_config : GeometryConfig, optional
+        Settings used to validate/repair the study area's own
+        geometry, immediately after loading it. Defaults to a
+        plain GeometryConfig() if not provided, so the study
+        area always gets the same protection as every other
+        vector layer in the pipeline — this closes a real gap
+        discovered during testing, where a genuinely broken
+        study area boundary (e.g. a self-crossing polygon from
+        clicking points out of order) could crash clipping with
+        a TopologyException, since the study area previously
+        never passed through geometry repair at all.
 
     Examples
     --------
-    >>> harmon = SpatialHarmonizer(config.spatial)
+    >>> harmon = SpatialHarmonizer(config.spatial, config.geometry)
     >>> vectors = harmon.clip_vectors(vectors)
     >>> rasters = harmon.clip_rasters(rasters)
     """
 
-    def __init__(self, config: SpatialConfig) -> None:
+    def __init__(
+        self,
+        config: SpatialConfig,
+        geometry_config: GeometryConfig | None = None,
+    ) -> None:
         self.config = config
         self._study_area: gpd.GeoDataFrame | None = None
 
@@ -55,6 +71,23 @@ class SpatialHarmonizer:
         # fail fast here rather than later mid-pipeline.
         if config.study_area_path:
             self._study_area = self._load_study_area(config.study_area_path)
+
+            # ── THE FIX ──────────────────────────────────────
+            # Repair the study area's own geometry using the
+            # exact same repair_geometries() function already
+            # used for every other vector layer in the pipeline.
+            # Previously, the study area was the one layer that
+            # bypassed this check entirely, since it's loaded
+            # here rather than through ingest.py's normal flow.
+            geo_config = geometry_config or GeometryConfig()
+            repaired = repair_geometries(
+                {"study_area": self._study_area}, geo_config
+            )
+            self._study_area = repaired["study_area"]
+            logger.info(
+                "  Study area geometry checked/repaired using the "
+                "same rules as other vector layers."
+            )
 
     def _load_study_area(self, path: str) -> gpd.GeoDataFrame:
         """Load the study area polygon from a file."""

@@ -16,12 +16,12 @@
 #      )
 #
 #   dem / orthophoto can also be a LIST of paths, in which case
-#   the tiles are automatically merged into one seamless raster
-#   — useful when a study area spans more than one DEM tile:
-#      result = run_pipeline(
-#          dem        = [r"path/to/tile1.tif", r"path/to/tile2.tif"],
-#          study_area = r"path/to/boundary.geojson",
-#      )
+#   the tiles are automatically merged into one seamless raster.
+#
+#   samples can now be a single path, a LIST of paths (each
+#   auto-named samples_0, samples_1, ...), or a DICT of
+#   {name: path} pairs (each keeping the name you give it) —
+#   so multiple CSV/Excel sources can be loaded in one call.
 #
 # PIPELINE SEQUENCE:
 #   1. Validate     check all files before loading anything
@@ -29,6 +29,7 @@
 #   3. CRS          reproject everything to WGS84 (EPSG:4326)
 #                   including study area (handles UTM input)
 #   4. Geometry     detect and repair invalid geometries
+#                   (including the study area's own boundary)
 #   5. Clip         clip all layers to study area
 #   6. Schema       standardize field names and data types
 #   7. QA           run data quality checks
@@ -138,10 +139,71 @@ def _save_rasters(
     return saved
 
 
+def _build_tabular_sources(
+    samples,
+    lon_col: str,
+    lat_col: str,
+) -> list[TabularSourceConfig]:
+    """
+    Build the list of TabularSourceConfig objects from the
+    `samples` argument, which can be:
+      - a single path (string)      -> one source, named "samples"
+      - a list of paths             -> auto-named samples_0, samples_1, ...
+      - a dict of {name: path}      -> keeps the names you give it
+
+    All sources share the same lon_col/lat_col — if your files
+    use genuinely different column names, build a PipelineConfig
+    manually instead (see README / Limitations).
+    """
+    tabular_sources = []
+
+    if samples is None:
+        return tabular_sources
+
+    if isinstance(samples, dict):
+        # e.g. {"team_a": "samples_teamA.csv", "team_b": "samples_teamB.csv"}
+        for name, path in samples.items():
+            tabular_sources.append(
+                TabularSourceConfig(
+                    name=name,
+                    path=str(path),
+                    lon_col=lon_col,
+                    lat_col=lat_col,
+                    optional=True,
+                )
+            )
+    elif isinstance(samples, list):
+        # e.g. ["file1.csv", "file2.csv"] — no names given, so we
+        # generate simple ones: samples_0, samples_1, ...
+        for i, path in enumerate(samples):
+            tabular_sources.append(
+                TabularSourceConfig(
+                    name=f"samples_{i}",
+                    path=str(path),
+                    lon_col=lon_col,
+                    lat_col=lat_col,
+                    optional=True,
+                )
+            )
+    else:
+        # Original behavior: a single path, single source named "samples"
+        tabular_sources.append(
+            TabularSourceConfig(
+                name="samples",
+                path=str(samples),
+                lon_col=lon_col,
+                lat_col=lat_col,
+                optional=True,
+            )
+        )
+
+    return tabular_sources
+
+
 def _build_config_from_args(
     dem,
     orthophoto,
-    samples: str | None,
+    samples,
     vectors: dict | None,
     study_area: str | None,
     lon_col: str,
@@ -161,6 +223,9 @@ def _build_config_from_args(
 
     dem and orthophoto can each be a single path or a list of
     paths (multiple tiles to be merged into one raster).
+
+    samples can be a single path, a list of paths, or a dict of
+    {name: path} — see _build_tabular_sources() for details.
     """
     vector_sources = []
     if vectors:
@@ -182,17 +247,7 @@ def _build_config_from_args(
                              path=ortho_path, optional=True)
         )
 
-    tabular_sources = []
-    if samples:
-        tabular_sources.append(
-            TabularSourceConfig(
-                name="samples",
-                path=str(samples),
-                lon_col=lon_col,
-                lat_col=lat_col,
-                optional=True,
-            )
-        )
+    tabular_sources = _build_tabular_sources(samples, lon_col, lat_col)
 
     if not raster_sources and not vector_sources and not tabular_sources:
         raise ValueError(
@@ -254,7 +309,8 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     # ── Stage 2: Ingest ──────────────────────────────────────
     # DEM/orthophoto tiles (if multiple were given) are merged
     # into one seamless raster here, before anything downstream
-    # ever sees them.
+    # ever sees them. Multiple tabular sources are each loaded
+    # and converted to point GeoDataFrames independently.
     all_vectors, all_rasters, tabulars = load_all_sources(config)
     all_vectors.update(tabulars)  # tabular → point GeoDataFrames
 
@@ -295,8 +351,14 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     all_vectors = repair_geometries(all_vectors, config.geometry)
 
     # ── Stage 5: Clip to study area ──────────────────────────
+    # SpatialHarmonizer also receives config.geometry, so the
+    # study area's OWN boundary geometry is checked/repaired the
+    # moment it's loaded — closing a gap discovered during
+    # testing, where the study area could crash clipping with a
+    # TopologyException, since it never went through
+    # repair_geometries() like every other vector layer did.
     logger.info("Stage 5: Clipping to study area...")
-    spatial = SpatialHarmonizer(config.spatial)
+    spatial = SpatialHarmonizer(config.spatial, config.geometry)
     all_vectors = spatial.clip_vectors(all_vectors)
     if all_rasters:
         all_rasters = spatial.clip_rasters(all_rasters)
@@ -357,7 +419,7 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
 def run_pipeline(
     dem: str | list[str] | None = None,
     orthophoto: str | list[str] | None = None,
-    samples: str | None = None,
+    samples: str | list[str] | dict[str, str] | None = None,
     vectors: dict[str, str] | None = None,
     study_area: str | None = None,
     lon_col: str = "longitude",
@@ -382,19 +444,32 @@ def run_pipeline(
 
     dem and orthophoto can each be a single path OR a list of
     paths. If a list is given, the tiles are merged into one
-    seamless raster automatically — useful when a study area
-    spans more than one DEM/orthophoto tile:
+    seamless raster automatically.
+
+    samples can now be:
+      - a single path (string)  -> one source, named "samples"
+      - a list of paths         -> auto-named samples_0, samples_1, ...
+      - a dict of {name: path}  -> keeps the names you give it
 
     result = run_pipeline(
-        dem        = [r"path/to/tile1.tif", r"path/to/tile2.tif"],
+        dem     = r"path/to/dem.tif",
+        samples = {
+            "team_a": r"path/to/samples_teamA.csv",
+            "team_b": r"path/to/samples_teamB.csv",
+        },
         study_area = r"path/to/boundary.geojson",
     )
+
+    Note: all tabular sources share the same lon_col/lat_col.
+    If your files use genuinely different column names, build a
+    PipelineConfig manually with per-source TabularSourceConfig
+    objects instead.
 
     Pipeline stages:
         1. Validate   check files before loading
         2. Ingest     load all data sources (merge tiles if needed)
         3. CRS        reproject everything to WGS84
-        4. Geometry   repair invalid geometries
+        4. Geometry   repair invalid geometries (incl. study area)
         5. Clip       clip to study area (required)
         6. Schema     standardize field names
         7. QA         data quality checks
@@ -410,8 +485,9 @@ def run_pipeline(
         Path (or list of tile paths) to satellite/aerial image(s).
         Textures the 3D terrain surface if provided.
 
-    samples : str, optional
-        Path to CSV/Excel with coordinate columns.
+    samples : str, list[str], dict[str, str], optional
+        One or more CSV/Excel files with coordinate columns.
+        See examples above.
 
     vectors : dict[str, str], optional
         Additional vector layers as {name: path}.
@@ -420,15 +496,18 @@ def run_pipeline(
     study_area : str
         REQUIRED. Path to a polygon file defining the area of
         interest. All layers are clipped to this boundary.
-        Accepts any CRS — reprojected automatically. Without
-        this, a full raster tile would be processed at full
-        extent, which is slow and memory-intensive.
+        Accepts any CRS — reprojected automatically. The study
+        area's own geometry is also validated/repaired
+        automatically, using the same rules as every other
+        vector layer.
 
     lon_col : str
-        Longitude column name in CSV. Default: "longitude"
+        Longitude column name, shared across all tabular
+        sources. Default: "longitude"
 
     lat_col : str
-        Latitude column name in CSV. Default: "latitude"
+        Latitude column name, shared across all tabular
+        sources. Default: "latitude"
 
     project_crs : int
         Target EPSG code. Default: 4326 (WGS84)
@@ -463,7 +542,7 @@ def run_pipeline(
 
     Examples
     --------
-    Single DEM tile:
+    Single DEM tile, single sample file:
 
     >>> from geostack3d import run_pipeline
     >>> result = run_pipeline(
@@ -473,10 +552,11 @@ def run_pipeline(
     ...     output_dir = r"C:/data/output",
     ... )
 
-    Multiple DEM tiles (study area spans two tiles):
+    Multiple DEM tiles AND multiple sample files:
 
     >>> result = run_pipeline(
-    ...     dem        = [r"C:/data/dem_tile1.tif", r"C:/data/dem_tile2.tif"],
+    ...     dem     = [r"C:/data/dem_tile1.tif", r"C:/data/dem_tile2.tif"],
+    ...     samples = {"team_a": r"C:/data/teamA.csv", "team_b": r"C:/data/teamB.csv"},
     ...     study_area = r"C:/data/boundary.geojson",
     ... )
 
