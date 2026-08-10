@@ -8,7 +8,10 @@ collect-all-then-decide error aggregation pattern.
 import pytest
 
 from geostack3d.config import (
-    PipelineConfig, RasterSourceConfig, VectorSourceConfig, SpatialConfig,
+    PipelineConfig,
+    RasterSourceConfig,
+    VectorSourceConfig,
+    SpatialConfig,
 )
 from geostack3d.validate import validate_all_sources
 
@@ -20,7 +23,9 @@ def test_missing_required_raster_raises(tmp_path):
 
     config = PipelineConfig(
         raster_sources=[
-            RasterSourceConfig(name="dem", path=str(tmp_path / "does_not_exist.tif"), optional=False)
+            RasterSourceConfig(
+                name="dem", path=str(tmp_path / "does_not_exist.tif"), optional=False
+            )
         ],
         spatial=SpatialConfig(study_area_path=str(study_area)),
     )
@@ -39,9 +44,13 @@ def test_missing_optional_vector_does_not_raise(small_dem_geotiff, tmp_path):
     )
 
     config = PipelineConfig(
-        raster_sources=[RasterSourceConfig(name="dem", path=small_dem_geotiff, optional=False)],
+        raster_sources=[
+            RasterSourceConfig(name="dem", path=small_dem_geotiff, optional=False)
+        ],
         vector_sources=[
-            VectorSourceConfig(name="path", path=str(tmp_path / "missing.kml"), optional=True)
+            VectorSourceConfig(
+                name="path", path=str(tmp_path / "missing.kml"), optional=True
+            )
         ],
         spatial=SpatialConfig(study_area_path=str(study_area)),
     )
@@ -58,8 +67,12 @@ def test_missing_study_area_always_raises(small_dem_geotiff, tmp_path):
     be set, and validate_all_sources confirms the file is real.
     """
     config = PipelineConfig(
-        raster_sources=[RasterSourceConfig(name="dem", path=small_dem_geotiff, optional=False)],
-        spatial=SpatialConfig(study_area_path=str(tmp_path / "missing_study_area.geojson")),
+        raster_sources=[
+            RasterSourceConfig(name="dem", path=small_dem_geotiff, optional=False)
+        ],
+        spatial=SpatialConfig(
+            study_area_path=str(tmp_path / "missing_study_area.geojson")
+        ),
     )
 
     with pytest.raises(ValueError):

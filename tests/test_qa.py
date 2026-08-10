@@ -23,6 +23,7 @@ def test_valid_layer_passes_all_checks(valid_polygon_gdf):
 def test_empty_layer_fails_row_count_check():
     """A layer with 0 rows should fail the row_count check."""
     import geopandas as gpd
+
     empty_gdf = gpd.GeoDataFrame({"name": []}, geometry=[], crs="EPSG:4326")
 
     config = QAConfig(halt_on_failure=False, min_row_count=1)

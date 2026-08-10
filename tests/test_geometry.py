@@ -26,7 +26,9 @@ def test_invalid_bowtie_gets_repaired(invalid_bowtie_gdf):
     repair, and fully valid after — this is the exact behavior
     verified manually during the project (splits into MultiPolygon).
     """
-    assert not invalid_bowtie_gdf.geometry.is_valid.all()  # sanity check: really is invalid
+    assert (
+        not invalid_bowtie_gdf.geometry.is_valid.all()
+    )  # sanity check: really is invalid
 
     config = GeometryConfig(auto_repair=True, validity_threshold=0.0)
     result = repair_geometries({"test": invalid_bowtie_gdf}, config)
@@ -39,7 +41,9 @@ def test_geometry_repair_raises_when_auto_repair_disabled(invalid_bowtie_gdf):
     config = GeometryConfig(auto_repair=False, validity_threshold=0.0)
     try:
         repair_geometries({"test": invalid_bowtie_gdf}, config)
-        assert False, "Expected a ValueError when auto_repair=False and geometry is invalid"
+        assert (
+            False
+        ), "Expected a ValueError when auto_repair=False and geometry is invalid"
     except ValueError:
         pass  # expected
 
@@ -48,14 +52,18 @@ def test_null_geometry_gets_dropped(null_geometry_gdf):
     """A row with a null geometry should be removed when drop_null_geometries=True."""
     assert len(null_geometry_gdf) == 2  # sanity check: starts with 2 rows
 
-    config = GeometryConfig(auto_repair=True, drop_null_geometries=True, validity_threshold=0.0)
+    config = GeometryConfig(
+        auto_repair=True, drop_null_geometries=True, validity_threshold=0.0
+    )
     result = repair_geometries({"test": null_geometry_gdf}, config)
 
     assert len(result["test"]) == 1  # the null row should be gone
     assert result["test"].geometry.is_valid.all()
 
 
-def test_repair_geometries_processes_multiple_layers(valid_polygon_gdf, invalid_bowtie_gdf):
+def test_repair_geometries_processes_multiple_layers(
+    valid_polygon_gdf, invalid_bowtie_gdf
+):
     """repair_geometries should handle multiple layers in one call, independently."""
     config = GeometryConfig(auto_repair=True, validity_threshold=0.0)
     result = repair_geometries(

@@ -30,7 +30,9 @@ def test_pipeline_config_requires_study_area():
     """A PipelineConfig without a study_area_path should raise."""
     with pytest.raises(ValidationError):
         PipelineConfig(
-            raster_sources=[RasterSourceConfig(name="dem", path="dem.tif", optional=False)],
+            raster_sources=[
+                RasterSourceConfig(name="dem", path="dem.tif", optional=False)
+            ],
             spatial=SpatialConfig(study_area_path=None),
         )
 

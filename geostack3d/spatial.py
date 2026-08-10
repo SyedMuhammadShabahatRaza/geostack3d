@@ -80,9 +80,7 @@ class SpatialHarmonizer:
             # bypassed this check entirely, since it's loaded
             # here rather than through ingest.py's normal flow.
             geo_config = geometry_config or GeometryConfig()
-            repaired = repair_geometries(
-                {"study_area": self._study_area}, geo_config
-            )
+            repaired = repair_geometries({"study_area": self._study_area}, geo_config)
             self._study_area = repaired["study_area"]
             logger.info(
                 "  Study area geometry checked/repaired using the "
@@ -100,14 +98,11 @@ class SpatialHarmonizer:
         try:
             gdf = gpd.read_file(str(p))
             logger.info(
-                f"[spatial] Loaded study area: {p.name} "
-                f"({len(gdf)} feature(s))"
+                f"[spatial] Loaded study area: {p.name} " f"({len(gdf)} feature(s))"
             )
             return gdf
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to read study area file: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to read study area file: {e}") from e
 
     # ------------------------------------------------------------------
     # Vector clipping
@@ -139,9 +134,7 @@ class SpatialHarmonizer:
             result[name] = self._clip_one_vector(name, gdf)
         return result
 
-    def _clip_one_vector(
-        self, name: str, gdf: gpd.GeoDataFrame
-    ) -> gpd.GeoDataFrame:
+    def _clip_one_vector(self, name: str, gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         """Clip a single vector layer to the study area."""
         # Reproject study area to match the layer's CRS before
         # clipping — they must be in the same CRS for the spatial
@@ -153,14 +146,11 @@ class SpatialHarmonizer:
             clipped = gpd.clip(gdf, study)
             clipped = clipped.reset_index(drop=True)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to clip vector layer '{name}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to clip vector layer '{name}': {e}") from e
 
         after = len(clipped)
         logger.info(
-            f"[spatial] Clipped vector '{name}': "
-            f"{before:,} → {after:,} features."
+            f"[spatial] Clipped vector '{name}': " f"{before:,} → {after:,} features."
         )
         return clipped
 
@@ -168,9 +158,7 @@ class SpatialHarmonizer:
     # Raster clipping
     # ------------------------------------------------------------------
 
-    def clip_rasters(
-        self, rasters: dict
-    ) -> dict:
+    def clip_rasters(self, rasters: dict) -> dict:
         """
         Clip all raster datasets to the study area boundary.
 
@@ -225,9 +213,7 @@ class SpatialHarmonizer:
                 nodata=src.nodata if src.nodata is not None else 0,
             )
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to clip raster '{name}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to clip raster '{name}': {e}") from e
 
         # Build the output profile — same as input but with
         # updated dimensions and transform for the clipped area

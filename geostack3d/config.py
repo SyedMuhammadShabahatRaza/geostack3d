@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field, model_validator
 
 # ── Source configs ───────────────────────────────────────────
 
+
 class VectorSourceConfig(BaseModel):
     """One entry for a vector source."""
+
     name: str
     path: str
     layer: str | None = None
@@ -20,6 +22,7 @@ class VectorSourceConfig(BaseModel):
 
 class RasterSourceConfig(BaseModel):
     """One entry for a raster source."""
+
     name: str
     path: str | list[str]  # multiple paths = tiles to be merged into one
     band: int = 1
@@ -29,6 +32,7 @@ class RasterSourceConfig(BaseModel):
 
 class TabularSourceConfig(BaseModel):
     """One entry for a tabular (CSV/Excel) source."""
+
     name: str
     path: str
     lon_col: str = "longitude"
@@ -40,13 +44,16 @@ class TabularSourceConfig(BaseModel):
 
 # ── Stage configs ────────────────────────────────────────────
 
+
 class CRSConfig(BaseModel):
     """CRS harmonization settings."""
+
     project_epsg: int = 4326
 
 
 class GeometryConfig(BaseModel):
     """Geometry repair settings."""
+
     auto_repair: bool = True
     drop_null_geometries: bool = True
     validity_threshold: float = 0.95
@@ -54,6 +61,7 @@ class GeometryConfig(BaseModel):
 
 class SchemaConfig(BaseModel):
     """Schema harmonization settings."""
+
     canonical_fields: dict[str, str] = Field(default_factory=dict)
     drop_extra_fields: bool = False
     encoding: str = "utf-8"
@@ -61,6 +69,7 @@ class SchemaConfig(BaseModel):
 
 class SpatialConfig(BaseModel):
     """Study area clipping settings."""
+
     # REQUIRED — without it, the pipeline would process a full
     # DEM/raster tile at full extent, which can be slow and
     # memory-intensive on smaller machines. See PipelineConfig's
@@ -73,6 +82,7 @@ class SpatialConfig(BaseModel):
 
 class QAConfig(BaseModel):
     """QA gate settings."""
+
     min_row_count: int = 1
     max_row_count: int | None = None
     required_fields: list[str] = Field(default_factory=list)
@@ -81,6 +91,7 @@ class QAConfig(BaseModel):
 
 class OutputConfig(BaseModel):
     """Output saving settings."""
+
     directory: str = "output"
     vector_format: Literal["gpkg", "geojson", "shp", "parquet"] = "gpkg"
     save_rasters: bool = True
@@ -88,6 +99,7 @@ class OutputConfig(BaseModel):
 
 class VisualizationConfig(BaseModel):
     """3D visualization settings."""
+
     engine: Literal["pyvista"] = "pyvista"
     dem_name: str = "dem"
     orthophoto_name: str | None = "orthophoto"
@@ -97,8 +109,10 @@ class VisualizationConfig(BaseModel):
 
 # ── Root config ──────────────────────────────────────────────
 
+
 class PipelineConfig(BaseModel):
     """The complete pipeline configuration."""
+
     name: str = "geostack3d_pipeline"
     description: str = ""
 

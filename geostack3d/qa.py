@@ -52,7 +52,9 @@ from geostack3d.config import QAConfig
 # ============================================================
 
 
-def _check_row_count(name: str, gdf: gpd.GeoDataFrame, config: QAConfig) -> tuple[bool, str]:
+def _check_row_count(
+    name: str, gdf: gpd.GeoDataFrame, config: QAConfig
+) -> tuple[bool, str]:
     """
     Check the layer has a sensible number of rows.
 
@@ -75,7 +77,9 @@ def _check_row_count(name: str, gdf: gpd.GeoDataFrame, config: QAConfig) -> tupl
     return True, f"row count {count} is within expected range"
 
 
-def _check_required_fields(name: str, gdf: gpd.GeoDataFrame, config: QAConfig) -> tuple[bool, str]:
+def _check_required_fields(
+    name: str, gdf: gpd.GeoDataFrame, config: QAConfig
+) -> tuple[bool, str]:
     """Check that every field listed in config.required_fields is present."""
     # This finds which required fields are MISSING by comparing
     # the list of required fields against the columns we actually have.
@@ -102,7 +106,9 @@ def _check_geometry_validity(name: str, gdf: gpd.GeoDataFrame) -> tuple[bool, st
     return True, "all geometries valid"
 
 
-def _check_no_empty_geometry_column(name: str, gdf: gpd.GeoDataFrame) -> tuple[bool, str]:
+def _check_no_empty_geometry_column(
+    name: str, gdf: gpd.GeoDataFrame
+) -> tuple[bool, str]:
     """Check the geometry column isn't entirely null."""
     if len(gdf) == 0:
         return True, "empty layer, skipped"
@@ -185,12 +191,14 @@ def run_qa(
         ]
 
         for check_name, (passed, message) in checks_to_run:
-            all_results.append({
-                "layer": name,
-                "check": check_name,
-                "passed": passed,
-                "message": message,
-            })
+            all_results.append(
+                {
+                    "layer": name,
+                    "check": check_name,
+                    "passed": passed,
+                    "message": message,
+                }
+            )
 
             # Log immediately so you see progress in real time,
             # not just at the very end.
@@ -212,8 +220,7 @@ def run_qa(
         # Build a readable summary of every failure for the
         # error message, instead of just saying "something failed".
         failure_lines = [
-            f"  - {f['layer']} | {f['check']}: {f['message']}"
-            for f in failures
+            f"  - {f['layer']} | {f['check']}: {f['message']}" for f in failures
         ]
         raise ValueError(
             f"QA gate failed with {len(failures)} problem(s):\n"

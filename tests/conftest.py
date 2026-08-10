@@ -80,9 +80,15 @@ def small_dem_geotiff(tmp_path):
     transform = from_origin(west=10.0, north=45.0, xsize=0.01, ysize=0.01)
 
     with rasterio.open(
-        path, "w",
-        driver="GTiff", height=10, width=10, count=1,
-        dtype="float32", crs="EPSG:4326", transform=transform,
+        path,
+        "w",
+        driver="GTiff",
+        height=10,
+        width=10,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=transform,
     ) as dst:
         dst.write(data, 1)
 
@@ -97,9 +103,15 @@ def small_dem_wrong_crs_geotiff(tmp_path):
     transform = from_origin(west=500000.0, north=4649776.0, xsize=10, ysize=10)
 
     with rasterio.open(
-        path, "w",
-        driver="GTiff", height=10, width=10, count=1,
-        dtype="float32", crs="EPSG:32633", transform=transform,
+        path,
+        "w",
+        driver="GTiff",
+        height=10,
+        width=10,
+        count=1,
+        dtype="float32",
+        crs="EPSG:32633",
+        transform=transform,
     ) as dst:
         dst.write(data, 1)
 

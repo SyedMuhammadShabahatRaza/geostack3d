@@ -203,10 +203,12 @@ def repair_geometries(
             # .is_empty also catches "empty" geometries
             # (technically not None, but containing no points).
             is_missing = gdf.geometry.isna() | gdf.geometry.is_empty
-            n_missing = is_missing.sum()   # True counts as 1, sums them up
+            n_missing = is_missing.sum()  # True counts as 1, sums them up
 
             if n_missing > 0:
-                logger.warning(f"  '{name}': dropping {n_missing} null/empty geometries.")
+                logger.warning(
+                    f"  '{name}': dropping {n_missing} null/empty geometries."
+                )
                 # The ~ symbol means "NOT" — so this keeps only
                 # rows where is_missing is False.
                 gdf = gdf[~is_missing].copy()
@@ -233,8 +235,8 @@ def repair_geometries(
                 # .loc[is_invalid, "geometry"] selects just those rows'
                 # geometry column, and we overwrite them with the
                 # repaired versions.
-                gdf.loc[is_invalid, "geometry"] = (
-                    gdf.loc[is_invalid, "geometry"].apply(_repair_one_geometry)
+                gdf.loc[is_invalid, "geometry"] = gdf.loc[is_invalid, "geometry"].apply(
+                    _repair_one_geometry
                 )
             else:
                 # If auto_repair is turned off in the config, we
@@ -264,9 +266,9 @@ def repair_geometries(
                     "line(s) — noding to make clip-safe."
                 )
                 crossing_idx = is_non_simple[is_non_simple].index
-                gdf.loc[crossing_idx, "geometry"] = (
-                    gdf.loc[crossing_idx, "geometry"].apply(_node_line_if_self_crossing)
-                )
+                gdf.loc[crossing_idx, "geometry"] = gdf.loc[
+                    crossing_idx, "geometry"
+                ].apply(_node_line_if_self_crossing)
 
         # ── Step 4: final validity check ──────────────────────
         # Even after repair, double-check the result. Sometimes

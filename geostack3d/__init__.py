@@ -57,6 +57,7 @@ def run_pipeline(**kwargs):
     See geostack3d.pipeline.run_pipeline for full documentation.
     """
     from geostack3d.pipeline import run_pipeline as _run
+
     return _run(**kwargs)
 
 
@@ -71,6 +72,7 @@ def make_3d_scene(vectors, rasters, **kwargs):
     """
     try:
         from geostack3d.visualize_pyvista import make_3d_scene_pyvista
+
         return make_3d_scene_pyvista(vectors, rasters, **kwargs)
     except ImportError:
         raise ImportError(

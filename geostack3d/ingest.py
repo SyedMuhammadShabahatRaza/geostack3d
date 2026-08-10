@@ -55,6 +55,7 @@ def _enable_kml_driver() -> None:
     """
     try:
         import fiona
+
         fiona.drvsupport.supported_drivers["KML"] = "rw"
         fiona.drvsupport.supported_drivers["LIBKML"] = "rw"
     except Exception:
@@ -62,6 +63,7 @@ def _enable_kml_driver() -> None:
 
 
 # ── Vector loading ───────────────────────────────────────────
+
 
 def _load_one_vector(src: VectorSourceConfig) -> gpd.GeoDataFrame | None:
     """
@@ -97,16 +99,14 @@ def _load_one_vector(src: VectorSourceConfig) -> gpd.GeoDataFrame | None:
         gdf = gpd.read_file(str(path), **kwargs)
     except Exception as e:
         raise RuntimeError(
-            f"\n[ingest] Could not read vector '{src.name}': {e}\n"
-            f"File: {src.path}"
+            f"\n[ingest] Could not read vector '{src.name}': {e}\n" f"File: {src.path}"
         ) from e
 
     if src.filter_expr:
         try:
             gdf = gdf.query(src.filter_expr).reset_index(drop=True)
             logger.info(
-                f"  [ingest] Applied filter to '{src.name}': "
-                f"{src.filter_expr}"
+                f"  [ingest] Applied filter to '{src.name}': " f"{src.filter_expr}"
             )
         except Exception as e:
             raise ValueError(
@@ -114,14 +114,12 @@ def _load_one_vector(src: VectorSourceConfig) -> gpd.GeoDataFrame | None:
                 f"Expression: {src.filter_expr}"
             ) from e
 
-    logger.info(
-        f"  [ingest] '{src.name}': {len(gdf):,} features, "
-        f"CRS={gdf.crs}"
-    )
+    logger.info(f"  [ingest] '{src.name}': {len(gdf):,} features, " f"CRS={gdf.crs}")
     return gdf
 
 
 # ── Raster loading ───────────────────────────────────────────
+
 
 def _merge_raster_tiles(paths: list, source_name: str):
     """
@@ -197,8 +195,8 @@ def _load_one_raster(src: RasterSourceConfig):
             return None
         raise FileNotFoundError(
             f"\n[ingest] Required raster tile(s) not found for '{src.name}':\n"
-            + "\n".join(f"  - {m}" for m in missing) +
-            f"\nCheck the path(s) in your config."
+            + "\n".join(f"  - {m}" for m in missing)
+            + f"\nCheck the path(s) in your config."
         )
 
     if len(path_objs) == 1:
@@ -228,6 +226,7 @@ def _load_one_raster(src: RasterSourceConfig):
 
 # ── Tabular loading ──────────────────────────────────────────
 
+
 def _load_one_tabular(src: TabularSourceConfig) -> gpd.GeoDataFrame | None:
     """
     Load a CSV or Excel file with coordinate columns and convert
@@ -251,9 +250,7 @@ def _load_one_tabular(src: TabularSourceConfig) -> gpd.GeoDataFrame | None:
             f"Check the path in your config."
         )
 
-    logger.info(
-        f"  [ingest] Loading tabular '{src.name}' from {path.name}"
-    )
+    logger.info(f"  [ingest] Loading tabular '{src.name}' from {path.name}")
 
     suffix = path.suffix.lower()
     try:
@@ -305,6 +302,7 @@ def _load_one_tabular(src: TabularSourceConfig) -> gpd.GeoDataFrame | None:
 
 
 # ── Public function ──────────────────────────────────────────
+
 
 def load_all_sources(config: PipelineConfig) -> tuple[dict, dict, dict]:
     """

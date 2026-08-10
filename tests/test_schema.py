@@ -13,7 +13,9 @@ from geostack3d.schema import harmonize_schema
 def test_field_map_renames_column(messy_schema_gdf):
     """field_map should rename the specified column, preserving its values."""
     source_configs = [
-        VectorSourceConfig(name="test", path="dummy.kml", field_map={"Name": "feature_name"})
+        VectorSourceConfig(
+            name="test", path="dummy.kml", field_map={"Name": "feature_name"}
+        )
     ]
     config = SchemaConfig(canonical_fields={}, drop_extra_fields=False)
 
@@ -31,7 +33,9 @@ def test_drop_extra_fields_keeps_only_canonical_plus_geometry(messy_schema_gdf):
     verified during the project.
     """
     source_configs = [
-        VectorSourceConfig(name="test", path="dummy.kml", field_map={"Name": "feature_name"})
+        VectorSourceConfig(
+            name="test", path="dummy.kml", field_map={"Name": "feature_name"}
+        )
     ]
     config = SchemaConfig(
         canonical_fields={"feature_name": "str"},
@@ -59,7 +63,9 @@ def test_geometry_column_is_never_dropped(messy_schema_gdf):
 def test_missing_canonical_field_is_created_with_none(valid_polygon_gdf):
     """A canonical field not present in the source should be created, filled with None."""
     source_configs = [VectorSourceConfig(name="test", path="dummy.geojson")]
-    config = SchemaConfig(canonical_fields={"population": "str"}, drop_extra_fields=False)
+    config = SchemaConfig(
+        canonical_fields={"population": "str"}, drop_extra_fields=False
+    )
 
     result = harmonize_schema({"test": valid_polygon_gdf}, config, source_configs)
 

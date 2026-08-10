@@ -85,10 +85,7 @@ def _sanity_check_wgs84(name: str, gdf: gpd.GeoDataFrame) -> None:
     minx, miny, maxx, maxy = gdf.total_bounds
 
     # Check if any value falls outside the valid WGS84 range
-    out_of_range = (
-        minx < -180 or maxx > 180
-        or miny < -90 or maxy > 90
-    )
+    out_of_range = minx < -180 or maxx > 180 or miny < -90 or maxy > 90
 
     if out_of_range:
         # f-strings (the f"..." syntax) let us insert variables
@@ -161,7 +158,7 @@ def harmonize_crs(
         if gdf.crs == target_crs:
             logger.info(f"  '{name}' already in EPSG:{config.project_epsg} — skipping.")
             result[name] = gdf
-            continue   # 'continue' skips to the next loop iteration
+            continue  # 'continue' skips to the next loop iteration
 
         # ── Do the actual reprojection ───────────────────────
         # .to_crs() is a geopandas method that transforms every
@@ -176,9 +173,7 @@ def harmonize_crs(
         try:
             reprojected = gdf.to_crs(target_crs)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to reproject layer '{name}': {e}"
-            ) from e
+            raise RuntimeError(f"Failed to reproject layer '{name}': {e}") from e
 
         # ── Sanity check (only meaningful for WGS84) ─────────
         # If we just reprojected INTO WGS84, double check the
@@ -227,7 +222,9 @@ def harmonize_raster_crs(
     for name, src in rasters.items():
 
         if src.crs == target_crs:
-            logger.info(f"  Raster '{name}' already in EPSG:{config.project_epsg} — skipping.")
+            logger.info(
+                f"  Raster '{name}' already in EPSG:{config.project_epsg} — skipping."
+            )
             # Even when skipping, we still wrap it in a MemoryFile
             # so the OUTPUT TYPE is always consistent (always a
             # MemoryFile, never sometimes-this sometimes-that).

@@ -84,6 +84,7 @@ from geostack3d.qa import run_qa
 
 # ── Output helpers ───────────────────────────────────────────
 
+
 def _save_vectors(
     vectors: dict,
     output_dir: str,
@@ -259,10 +260,15 @@ def _build_config_from_args(
             RasterSourceConfig(name=dem_name, path=dem_path, optional=False)
         )
     if orthophoto:
-        ortho_path = [str(p) for p in orthophoto] if isinstance(orthophoto, list) else str(orthophoto)
+        ortho_path = (
+            [str(p) for p in orthophoto]
+            if isinstance(orthophoto, list)
+            else str(orthophoto)
+        )
         raster_sources.append(
-            RasterSourceConfig(name=orthophoto_name or "orthophoto",
-                             path=ortho_path, optional=True)
+            RasterSourceConfig(
+                name=orthophoto_name or "orthophoto", path=ortho_path, optional=True
+            )
         )
 
     tabular_sources = _build_tabular_sources(samples, lon_col, lat_col, field_map)
@@ -303,6 +309,7 @@ def _build_config_from_args(
 
 # ── Core pipeline runner ─────────────────────────────────────
 
+
 def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     """
     Run all pipeline stages using a PipelineConfig object.
@@ -339,15 +346,15 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
             sa_path = Path(config.spatial.study_area_path)
             if sa_path.exists():
                 study_area_gdf = gpd.read_file(str(sa_path))
-                original_epsg = study_area_gdf.crs.to_epsg() if study_area_gdf.crs else "unknown"
+                original_epsg = (
+                    study_area_gdf.crs.to_epsg() if study_area_gdf.crs else "unknown"
+                )
                 if original_epsg != config.crs.project_epsg:
                     logger.info(
                         f"  Reprojecting study area: "
                         f"EPSG:{original_epsg} → EPSG:{config.crs.project_epsg}"
                     )
-                    study_area_gdf = study_area_gdf.to_crs(
-                        epsg=config.crs.project_epsg
-                    )
+                    study_area_gdf = study_area_gdf.to_crs(epsg=config.crs.project_epsg)
                 config.spatial._study_area_gdf = study_area_gdf
         except Exception as e:
             logger.warning(f"  Could not reproject study area: {e}")
@@ -371,9 +378,7 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
 
     # ── Stage 6: Schema harmonization ────────────────────────
     logger.info("Stage 6: Schema harmonization...")
-    all_source_configs = (
-        list(config.vector_sources) + list(config.tabular_sources)
-    )
+    all_source_configs = list(config.vector_sources) + list(config.tabular_sources)
     all_vectors = harmonize_schema(
         all_vectors, config.schema_config, all_source_configs
     )
@@ -387,13 +392,12 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
     saved = []
     if all_vectors:
         saved.extend(
-            _save_vectors(all_vectors, config.output.directory,
-                         config.output.vector_format)
+            _save_vectors(
+                all_vectors, config.output.directory, config.output.vector_format
+            )
         )
     if all_rasters and config.output.save_rasters:
-        saved.extend(
-            _save_rasters(all_rasters, config.output.directory)
-        )
+        saved.extend(_save_rasters(all_rasters, config.output.directory))
 
     # ── Done ──────────────────────────────────────────────────
     elapsed = time.perf_counter() - start
@@ -421,6 +425,7 @@ def _run_pipeline_from_config(config: PipelineConfig) -> dict:
 
 
 # ── Public interface ─────────────────────────────────────────
+
 
 def run_pipeline(
     dem: str | list[str] | None = None,

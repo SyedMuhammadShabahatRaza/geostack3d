@@ -14,6 +14,7 @@ TABULAR_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
 # ── Individual file checks ───────────────────────────────────
 
+
 def check_file_exists(path: str, source_name: str) -> None:
     """Check a file exists and is not empty."""
     p = Path(path)
@@ -32,7 +33,9 @@ def check_file_exists(path: str, source_name: str) -> None:
             f"corrupted or failed to download completely."
         )
 
-    logger.debug(f"  [validate] '{source_name}': file exists ({p.stat().st_size / 1024:.1f} KB)")
+    logger.debug(
+        f"  [validate] '{source_name}': file exists ({p.stat().st_size / 1024:.1f} KB)"
+    )
 
 
 def check_extension(path: str, source_name: str, expected: set) -> None:
@@ -51,6 +54,7 @@ def check_raster_readable(path: str, source_name: str) -> dict:
     """Try to open a raster file with rasterio and read its metadata."""
     try:
         import rasterio
+
         with rasterio.open(path) as src:
             info = {
                 "width": src.width,
@@ -85,7 +89,9 @@ def check_vector_readable(path: str, source_name: str) -> dict:
         gdf = gpd.read_file(path)
         info = {
             "features": len(gdf),
-            "geometry_type": gdf.geom_type.unique().tolist() if len(gdf) > 0 else ["empty"],
+            "geometry_type": (
+                gdf.geom_type.unique().tolist() if len(gdf) > 0 else ["empty"]
+            ),
             "crs": str(gdf.crs),
             "columns": gdf.columns.tolist(),
         }
@@ -112,6 +118,7 @@ def check_tabular_readable(
     """Try to read a CSV/Excel file and check coordinate columns exist."""
     try:
         import pandas as pd
+
         suffix = Path(path).suffix.lower()
         if suffix == ".csv":
             df = pd.read_csv(path, nrows=5)
@@ -134,8 +141,7 @@ def check_tabular_readable(
             )
 
         logger.debug(
-            f"  [validate] '{source_name}': tabular OK "
-            f"(columns: {info['columns']})"
+            f"  [validate] '{source_name}': tabular OK " f"(columns: {info['columns']})"
         )
         return info
 
@@ -143,12 +149,12 @@ def check_tabular_readable(
         raise
     except Exception as e:
         raise RuntimeError(
-            f"\n[{source_name}] Cannot read tabular file: {path}\n"
-            f"Reason: {e}"
+            f"\n[{source_name}] Cannot read tabular file: {path}\n" f"Reason: {e}"
         ) from e
 
 
 # ── Main validation function ─────────────────────────────────
+
 
 def validate_all_sources(config) -> None:
     """
@@ -194,10 +200,19 @@ def validate_all_sources(config) -> None:
         try:
             for p in path_objs:
                 check_file_exists(str(p), src.name)
-                check_extension(str(p), src.name,
-                              VECTOR_EXTENSIONS if source_type == "vector"
-                              else RASTER_EXTENSIONS if source_type == "raster"
-                              else TABULAR_EXTENSIONS)
+                check_extension(
+                    str(p),
+                    src.name,
+                    (
+                        VECTOR_EXTENSIONS
+                        if source_type == "vector"
+                        else (
+                            RASTER_EXTENSIONS
+                            if source_type == "raster"
+                            else TABULAR_EXTENSIONS
+                        )
+                    ),
+                )
                 check_fn(str(p), src.name)
             return True
         except Exception as e:
@@ -211,8 +226,10 @@ def validate_all_sources(config) -> None:
         _validate_source(src, check_raster_readable, "raster")
 
     for src in config.tabular_sources:
+
         def check_tabular(path, name):
             check_tabular_readable(path, name, src.lon_col, src.lat_col)
+
         _validate_source(src, check_tabular, "tabular")
 
     # ── Validate study area (REQUIRED, not optional) ─────────
@@ -231,7 +248,9 @@ def validate_all_sources(config) -> None:
     else:
         try:
             check_file_exists(config.spatial.study_area_path, "study_area")
-            check_extension(config.spatial.study_area_path, "study_area", VECTOR_EXTENSIONS)
+            check_extension(
+                config.spatial.study_area_path, "study_area", VECTOR_EXTENSIONS
+            )
             check_vector_readable(config.spatial.study_area_path, "study_area")
         except Exception as e:
             errors.append(str(e))

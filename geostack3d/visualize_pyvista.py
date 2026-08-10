@@ -72,7 +72,9 @@ def _get_dem_grid(dataset):
     return lon_grid, lat_grid, elevation
 
 
-def _sample_elevation_at_points(dataset, lons: list[float], lats: list[float]) -> list[float]:
+def _sample_elevation_at_points(
+    dataset, lons: list[float], lats: list[float]
+) -> list[float]:
     """
     Sample elevation using BILINEAR interpolation, matching how
     the terrain mesh itself interpolates between grid points.
@@ -85,7 +87,9 @@ def _sample_elevation_at_points(dataset, lons: list[float], lats: list[float]) -
 
     elevation_array = dataset.read(1).astype(float)
     if dataset.nodata is not None:
-        elevation_array = np.where(elevation_array == dataset.nodata, np.nan, elevation_array)
+        elevation_array = np.where(
+            elevation_array == dataset.nodata, np.nan, elevation_array
+        )
 
     # Convert real-world (lon, lat) coordinates into fractional
     # pixel row/col positions using the raster's inverse transform.
@@ -301,9 +305,7 @@ def make_3d_scene_pyvista(
     elevation_range = np.nanmax(elevation_grid) - np.nanmin(elevation_grid)
     z_scale_factor = (1.0 / elevation_range) if elevation_range > 0 else 1.0
     elevation_norm = (
-        (elevation_grid - np.nanmin(elevation_grid))
-        * z_scale_factor
-        * z_exaggeration
+        (elevation_grid - np.nanmin(elevation_grid)) * z_scale_factor * z_exaggeration
     )
 
     # ── Build the terrain mesh ───────────────────────────────
@@ -338,14 +340,16 @@ def make_3d_scene_pyvista(
         v_coords = (lat_grid - ortho_bottom) / (ortho_top - ortho_bottom)
 
         u_grid, v_grid = np.meshgrid(u_coords, v_coords)
-        texture_coords = np.column_stack([
-            u_grid.flatten(order="F"),
-            v_grid.flatten(order="F"),
-        ])
+        texture_coords = np.column_stack(
+            [
+                u_grid.flatten(order="F"),
+                v_grid.flatten(order="F"),
+            ]
+        )
         terrain.active_texture_coordinates = texture_coords
 
         texture = pv.numpy_to_texture(orthophoto_texture)
-        
+
         plotter.add_mesh(terrain, texture=texture, opacity=0.95)
     else:
         plotter.add_mesh(
@@ -374,7 +378,7 @@ def make_3d_scene_pyvista(
         # surface, without the z-fighting/submersion issues a
         # nearest-neighbor vs. bilinear mismatch used to cause.
         z = (elevations - np.nanmin(elevation_grid)) * z_scale_factor * z_exaggeration
-        
+
         return x, y, z
 
     # ── Draped boreholes (points) ─────────────────────────────
@@ -419,7 +423,13 @@ def make_3d_scene_pyvista(
             # from an ordered list of 3D points — the PyVista
             # equivalent of Plotly's mode="lines" Scatter3d.
             line_mesh = pv.lines_from_points(points)
-            plotter.add_mesh(line_mesh, color="black", line_width=4, label=name, render_lines_as_tubes=True)
+            plotter.add_mesh(
+                line_mesh,
+                color="black",
+                line_width=4,
+                label=name,
+                render_lines_as_tubes=True,
+            )
 
     # ── Draped formations (polygon outlines) ──────────────────
     for name, gdf in vectors.items():
@@ -429,8 +439,7 @@ def make_3d_scene_pyvista(
         for _, row in gdf.iterrows():
             polygon = row.geometry
             sub_polygons = (
-                [polygon] if polygon.geom_type == "Polygon"
-                else list(polygon.geoms)
+                [polygon] if polygon.geom_type == "Polygon" else list(polygon.geoms)
             )
 
             for sub_polygon in sub_polygons:

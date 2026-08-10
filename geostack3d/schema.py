@@ -54,10 +54,10 @@ from geostack3d.config import SchemaConfig, VectorSourceConfig, TabularSourceCon
 # to the actual pandas dtype strings pandas understands.
 # This is just a translation table — nothing clever happening.
 _DTYPE_MAP = {
-    "str": "object",          # text
-    "int": "Int64",           # whole numbers (capital I allows missing values!)
-    "float": "float64",       # decimal numbers
-    "datetime": "datetime64[ns]",   # dates/times
+    "str": "object",  # text
+    "int": "Int64",  # whole numbers (capital I allows missing values!)
+    "float": "float64",  # decimal numbers
+    "datetime": "datetime64[ns]",  # dates/times
 }
 
 
@@ -216,7 +216,7 @@ def harmonize_schema(
     result: dict[str, gpd.GeoDataFrame] = {}
 
     for name, gdf in vectors.items():
-        gdf = gdf.copy()   # never edit the caller's original data
+        gdf = gdf.copy()  # never edit the caller's original data
 
         # ── Step 1: rename fields ────────────────────────────
         # .get(name, {}) looks up this layer's field_map, or
